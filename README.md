@@ -1,4 +1,4 @@
-# <div align="center">OLC2_Proyecto1_202300813</div>
+# <div align="center">OLC2_Proyecto2_G6</div>
 
 ## <div align="center">Integrantes del Grupo</div>
 
