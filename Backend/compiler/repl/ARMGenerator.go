@@ -5,6 +5,7 @@ type ARMGenerator struct {
 	Console *Console
 	// Listado de instrucciones ARM Generadas
 	Instructions []string
+    Data         []string
 }
 
 /*
@@ -22,9 +23,27 @@ type ARMGenerator struct {
 
 // Agregar instrucciones ARM a la lista
 func (g *ARMGenerator) AddInstruction(instruction string) {
-	g.Instructions = append(g.Instructions, instruction)
-	// Vayamos agregando las instrucciones.
+    g.Instructions = append(g.Instructions, instruction)
 }
+
+func (g *ARMGenerator) AddData(data string) {
+    g.Data = append(g.Data, data)
+}
+
+func (g *ARMGenerator) ToString() string {
+    result := ".section .text\n\n.globl _start\n\n_start:\n"
+    for _, instr := range g.Instructions {
+        result += "    " + instr + "\n"
+    }
+    result += "\n"
+    if len(g.Data) > 0 {
+        for _, data := range g.Data {
+            result += data + "\n"
+        }
+    }
+    return result
+}
+
 
 /*
 

@@ -52,7 +52,29 @@ func main() {
         arbolito := parser.Programa()
 		// Imprime el árbol sintáctico para depuración
 		//PrintVerticalTree(arbolito, parser.RuleNames)
-		
+		//----------------arm
+
+		// 1. Crear el generador y el visitor ARM
+		generator := &repl.ARMGenerator{}
+		armVisitor := &repl.ARMVisitor{
+		Generator: generator,
+			// Puedes inicializar otros campos si lo necesitas
+		}
+
+		// 2. Recorrer el árbol con el visitor ARM
+		armVisitor.Visit(arbolito)
+
+		asmCode := generator.ToString()
+		assemblerDir := "assembler"
+		os.MkdirAll(assemblerDir, 0755) // Crea la carpeta si no existe
+		asmPath := filepath.Join(assemblerDir, "program.s")
+		err := os.WriteFile(asmPath, []byte(asmCode), 0644)
+		if err != nil {
+			fmt.Println("Error al escribir el archivo Assembly:", err)
+		} else {
+			fmt.Println("Archivo Assembly generado correctamente en:", asmPath)
+		}
+		//----------------------
         visitor := repl.NewReplVisitor()
 		
         visitor.Visit(arbolito)
@@ -76,7 +98,7 @@ func main() {
 		ruta := filepath.Join("reportes", "tabla_simbolos.html")
 		// Crear la carpeta si no existe
 		os.MkdirAll("reportes", 0755)
-		err := tabla.ToHTML(ruta)
+		err = tabla.ToHTML(ruta)
 		if err != nil {
 			fmt.Println("Error al crear el HTML:", err)
 		} else {
