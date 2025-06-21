@@ -1,1 +1,7 @@
-print("hola assembler")
+print("hola mundo")
+print("hola a todos")
+print("esto es como un string")
+print(1)
+print(1.25)
+print(true)
+print('A')

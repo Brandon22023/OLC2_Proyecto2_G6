@@ -33,13 +33,11 @@ func (g *ARMGenerator) AddData(data string) {
 func (g *ARMGenerator) ToString() string {
     result := ".section .text\n\n.globl _start\n\n_start:\n"
     for _, instr := range g.Instructions {
-        result += "    " + instr + "\n"
+        result += instr + "\n"
     }
-    result += "\n"
-    if len(g.Data) > 0 {
-        for _, data := range g.Data {
-            result += data + "\n"
-        }
+    result += "\n.section .rodata\n"
+    for _, data := range g.Data {
+        result += data + "\n"
     }
     return result
 }
