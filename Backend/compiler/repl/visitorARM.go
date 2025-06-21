@@ -136,8 +136,7 @@ func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) inte
                 switch entry.Tipo {
                 case "int":
                     v.UsesIntToAscii = true
-                    // Imprimir entero usando buffer y función int_to_ascii
-                    v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%s", entry.Valor))
+    				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%s", entry.Valor))
 					v.Generator.AddInstruction("ldr x1, =buffer")
 					v.Generator.AddInstruction("bl int_to_ascii")
 					v.Generator.AddInstruction("mov x2, x0") // longitud
@@ -168,12 +167,12 @@ func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) inte
             switch pv.Tipo {
             case "entero":
                 v.UsesIntToAscii = true
-                v.Generator.AddMov("x0", "#"+pv.Valor)
-                v.Generator.AddLdr("x1", "buffer")
-                v.Generator.AddBl("int_to_ascii")
-                v.Generator.AddInstruction("mov x2, x0") // longitud
-				v.Generator.AddInstruction("mov x1, x1") // puntero al string
-				v.Generator.AddInstruction("mov x0, #1") // stdout
+				v.Generator.AddMov("x0", "#"+pv.Valor)
+				v.Generator.AddLdr("x1", "buffer")
+				v.Generator.AddBl("int_to_ascii")
+				v.Generator.AddInstruction("mov x2, x0")
+				v.Generator.AddInstruction("mov x1, x1")
+				v.Generator.AddInstruction("mov x0, #1")
 				v.Generator.AddInstruction("mov w8, #64")
 				v.Generator.AddInstruction("svc #0")
                 // salto de línea

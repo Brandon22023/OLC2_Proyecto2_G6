@@ -67,18 +67,25 @@ int_to_ascii_loop:
     bne int_to_ascii_loop
 int_to_ascii_done:
     sub x2, x2, x4      // x2 = inicio de los dígitos
-    mov x7, x4          // x7 = longitud
-    mov x8, x1          // x8 = buffer original
-reverse_loop:
-    cmp x7, #0
-    beq reverse_done
-    ldrb w9, [x2], #1
-    strb w9, [x8], #1
-    sub x7, x7, #1
-    b reverse_loop
-reverse_done:
-    sub x1, x8, x4      // x1 = puntero al inicio del número invertido
-    mov x0, x4          // longitud
+    mov x5, x4          // x5 = longitud
+    mov x6, #0          // i = 0
+reverse_inplace_loop:
+    cmp x6, x5
+    bge reverse_inplace_done
+    add x7, x2, x6      // &buffer[i]
+    sub x8, x2, x6
+    add x8, x8, x5
+    sub x8, x8, #1      // &buffer[len-1-i]
+    ldrb w9, [x7]
+    ldrb w10, [x8]
+    strb w10, [x7]
+    strb w9, [x8]
+    add x6, x6, #1
+    cmp x6, x5, lsr #1
+    blt reverse_inplace_loop
+reverse_inplace_done:
+    mov x1, x2          // x1 = puntero al inicio
+    mov x0, x5          // x0 = longitud
     ret
 `)
 }
