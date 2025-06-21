@@ -1,160 +1,478 @@
 package repl
 
-type ARMGenerator struct {
-	// The console is the output of the REPL
-	Console *Console
-	// Listado de instrucciones ARM Generadas
-	Instructions []string
-	Data         []string
+import (
+    "fmt"
+    "strings"
+)
+
+// Tipos de objetos para la pila
+type StackObjectType int
+
+const (
+    Int StackObjectType = iota
+    Float
+    String
+    Boolean
+    Rune
+    NUL
+)
+
+type StackObject struct {
+    Type   StackObjectType
+    Length int
+    Depth  int
+    Id     string
+    Offset *int
 }
 
-/*
-
-   public void Push(string rs)
-    {
-        instructions.Add($"STR {rs}, [SP, #-8]!");
-    }
-
-    public void Pop(string rd)
-    {
-        instructions.Add($"LDR {rd}, [SP], #8");
-    }
-*/
-
-// Agregar instrucciones ARM a la lista
-func (g *ARMGenerator) AddInstruction(instruction string) {
-	g.Instructions = append(g.Instructions, instruction)
+// Simulación de una librería estándar
+type StandardLibrary struct {
+    Symbols map[string]string
+    used    map[string]bool
 }
 
-func (g *ARMGenerator) AddData(data string) {
-	g.Data = append(g.Data, data)
+func NewStandardLibrary() *StandardLibrary {
+    return &StandardLibrary{
+        Symbols: make(map[string]string),
+        used:    make(map[string]bool),
+    }
+}
+func (g *ArmGenerator) AddData(data string) {
+    g.Data = append(g.Data, data)
+}
+func (g *ArmGenerator) AddInstruction(instr string) {
+    g.Instructions = append(g.Instructions, instr)
+}
+func (g *ArmGenerator) AddIntToAsciiFunction() {
+    g.FuncInstrucions = append(g.FuncInstrucions, `
+int_to_ascii:
+    mov x2, x1          // x2 = buffer (puntero de escritura)
+    mov x3, #10         // divisor
+    mov x4, #0          // contador de dígitos
+    mov x5, x0          // copia del número
+    cmp x5, #0
+    bne int_to_ascii_loop
+    mov w6, #'0'
+    strb w6, [x2], #1
+    mov x4, #1
+    b int_to_ascii_done
+int_to_ascii_loop:
+    udiv x6, x5, x3
+    msub x7, x6, x3, x5 // x7 = x5 - x6*x3 (resto)
+    add w7, w7, #'0'
+    strb w7, [x2], #1
+    mov x5, x6
+    add x4, x4, #1
+    cmp x5, #0
+    bne int_to_ascii_loop
+int_to_ascii_done:
+    sub x2, x2, x4      // x2 = inicio de los dígitos
+    mov x7, x4          // x7 = longitud
+    mov x8, x1          // x8 = buffer original
+reverse_loop:
+    cmp x7, #0
+    beq reverse_done
+    ldrb w9, [x2], #1
+    strb w9, [x8], #1
+    sub x7, x7, #1
+    b reverse_loop
+reverse_done:
+    sub x1, x8, x4      // x1 = puntero al inicio del número invertido
+    mov x0, x4          // longitud
+    ret
+`)
 }
 
-func (g *ARMGenerator) ToString() string {
-	result := ".section .text\n\n.globl _start\n\n_start:\n"
-	for _, instr := range g.Instructions {
-		result += instr + "\n"
-	}
-
-	result += "\n    # Salida final\n"
-	result += "mov x0, #0\n"
-	result += "mov w8, #93\n"
-	result += "svc #0\n"
-
-	result += "\n.section .rodata\n"
-	for _, data := range g.Data {
-		result += data + "\n"
-	}
-	return result
+func (g *ArmGenerator) AddMov(rd, imm string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("mov %s, %s", rd, imm))
 }
 
-/*
+func (g *ArmGenerator) AddLdr(rd, label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("ldr %s, =%s", rd, label))
+}
+
+func (g *ArmGenerator) AddBl(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("bl %s", label))
+}
+
+func (g *ArmGenerator) AddSvc() {
+    g.Instructions = append(g.Instructions, "svc #0")
+}
+func (g *ArmGenerator) ToString() string {
+    return g.String()
+}
+
+func (s *StandardLibrary) Use(name string) {
+    s.used[name] = true
+}
+
+func (s *StandardLibrary) GetFunctionDefinitions() string {
+    // Aquí deberías retornar las definiciones de funciones usadas
+    return "// Funciones estándar aquí"
+}
+
+// ARMGenerator adaptado
+type ArmGenerator struct {
+    Instructions   []string
+    StdLib         *StandardLibrary
+    FuncInstrucions []string
+    StackObjects   []StackObject
+    Depth          int
+    LabelCounter   int
+    UsesIntToAscii bool // <-- Añade este campo para compatibilidad
+    Data           []string // <-- Añade este campo para visitorARM.go
+}
 
 
-using System.Text;
-using System.Xml.Serialization;
-
-public class ArmGenerator
-{
-
-    private readonly List<string> instructions = new List<string>();
-    private readonly StandardLibrary stdLib = new StandardLibrary();
-
-
-    public void Add(string rd, string rs1, string rs2)
-    {
-        instructions.Add($"ADD {rd}, {rs1}, {rs2}");
+func NewArmGenerator() *ArmGenerator {
+    return &ArmGenerator{
+        Instructions:   []string{},
+        StdLib:         NewStandardLibrary(),
+        FuncInstrucions: []string{},
+        StackObjects:   []StackObject{},
+        Depth:          0,
+        LabelCounter:   0,
     }
+}
 
-    public void Sub(string rd, string rs1, string rs2)
-    {
-        instructions.Add($"SUB {rd}, {rs1}, {rs2}");
+func (g *ArmGenerator) getLabel() string {
+    label := fmt.Sprintf("L%d", g.LabelCounter)
+    g.LabelCounter++
+    return label
+}
+
+func (g *ArmGenerator) setLabel(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("%s:", label))
+}
+
+// Operaciones de pila
+func (g *ArmGenerator) PushObject(obj StackObject) {
+    g.StackObjects = append(g.StackObjects, obj)
+}
+
+func (g *ArmGenerator) TopObject() StackObject {
+    return g.StackObjects[len(g.StackObjects)-1]
+}
+
+func (g *ArmGenerator) PopObject() StackObject {
+    if len(g.StackObjects) == 0 {
+        panic("No hay objetos en la pila")
     }
+    obj := g.StackObjects[len(g.StackObjects)-1]
+    g.StackObjects = g.StackObjects[:len(g.StackObjects)-1]
+    return obj
+}
 
-    public void Mul(string rd, string rs1, string rs2)
-    {
-        instructions.Add($"MUL {rd}, {rs1}, {rs2}");
-    }
-
-    public void Div(string rd, string rs1, string rs2)
-    {
-        instructions.Add($"DIV {rd}, {rs1}, {rs2}");
-    }
-
-    public void Addi(string rd, string rs1, int imm)
-    {
-        instructions.Add($"ADDI {rd}, {rs1}, #{imm}");
-    }
-
-    // - Memory operations
-    public void Str(string rs1, string rs2, int offset = 0)
-    {
-        instructions.Add($"STR {rs1}, [{rs2}, #{offset}]");
-    }
-
-    public void Ldr(string rd, string rs1, int offset = 0)
-    {
-        instructions.Add($"LDR {rd}, [{rs1}, #{offset}]");
-    }
-
-    public void Mov(string rd, int imm)
-    {
-        instructions.Add($"MOV {rd}, #{imm}");
-    }
-
-    public void Push(string rs)
-    {
-        instructions.Add($"STR {rs}, [SP, #-8]!");
-    }
-
-    public void Pop(string rd)
-    {
-        instructions.Add($"LDR {rd}, [SP], #8");
-    }
-
-    public void Svc()
-    {
-        instructions.Add($"SVC #0");
-    }
-
-    public void EndProgram()
-    {
-        Mov(Register.X0, 0);
-        Mov(Register.X8, 93); // syscall number for exit
-        Svc(); // make syscall
-    }
-
-    public void PrintInteger(string rs)
-    {
-        stdLib.Use("print_integer");
-        instructions.Add($"MOV X0, {rs}");
-        instructions.Add($"BL print_integer");
-    }
-
-    public void Comment(string comment)
-    {
-        instructions.Add($"// {comment}");
-    }
-
-    public override string ToString()
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine(".text");
-        sb.AppendLine(".global _start");
-        sb.AppendLine("_start:");
-
-        EndProgram();
-        foreach (var instruction in instructions)
-        {
-            sb.AppendLine(instruction);
+func (g *ArmGenerator) PushConstant(obj StackObject, value interface{}) {
+    switch obj.Type {
+    case Int:
+        g.Mov("X0", value.(int))
+        g.Push("X0")
+    case Float:
+        // Conversión de float64 a uint64
+        floatBits := int64(value.(float64))
+        for i := 0; i < 4; i++ {
+            part := (floatBits >> (i * 16)) & 0xFFFF
+            if i == 0 {
+                g.Instructions = append(g.Instructions, fmt.Sprintf("MOVZ X0, #%d, LSL #0", part))
+            } else {
+                g.Instructions = append(g.Instructions, fmt.Sprintf("MOVK X0, #%d, LSL #%d", part, i*16))
+            }
         }
-
-        sb.AppendLine("\n\n\n// Standard Library");
-        sb.AppendLine(stdLib.GetFunctionDefinitions());
-
-        return sb.ToString();
+        g.Push("X0")
+    case String:
+        // Simulación: solo push de dirección ficticia
+        g.Push("HP")
+        // Aquí deberías convertir el string a bytes y simular el push caracter por caracter
+    case Boolean:
+        val := 0
+        if value.(bool) {
+            val = 1
+        }
+        g.Mov("X0", val)
+        g.Push("X0")
+    case Rune:
+        g.Mov("X0", int(value.(rune)))
+        g.Push("X0")
     }
-
+    g.PushObject(obj)
 }
 
-*/
+func (g *ArmGenerator) PopObjectTo(rd string) StackObject {
+    obj := g.PopObject()
+    g.Pop(rd)
+    return obj
+}
+
+// Métodos para crear objetos de pila
+func (g *ArmGenerator) IntObject() StackObject {
+    return StackObject{Type: Int, Length: 8, Depth: g.Depth}
+}
+func (g *ArmGenerator) FloatObject() StackObject {
+    return StackObject{Type: Float, Length: 8, Depth: g.Depth}
+}
+func (g *ArmGenerator) StringObject() StackObject {
+    return StackObject{Type: String, Length: 8, Depth: g.Depth}
+}
+func (g *ArmGenerator) BooleanObject() StackObject {
+    return StackObject{Type: Boolean, Length: 8, Depth: g.Depth}
+}
+func (g *ArmGenerator) RuneObject() StackObject {
+    return StackObject{Type: Rune, Length: 8, Depth: g.Depth}
+}
+func (g *ArmGenerator) CloneObject(obj StackObject) StackObject {
+    return StackObject{
+        Type:   obj.Type,
+        Length: obj.Length,
+        Depth:  obj.Depth,
+        Id:     obj.Id,
+    }
+}
+
+// Manejo de scopes
+func (g *ArmGenerator) NewScope() {
+    g.Depth++
+}
+func (g *ArmGenerator) EndScope() int {
+    byteOffset := 0
+    for i := len(g.StackObjects) - 1; i >= 0; i-- {
+        if g.StackObjects[i].Depth == g.Depth {
+            byteOffset += g.StackObjects[i].Length
+            g.StackObjects = append(g.StackObjects[:i], g.StackObjects[i+1:]...)
+        } else {
+            break
+        }
+    }
+    g.Depth--
+    return byteOffset
+}
+
+func (g *ArmGenerator) TagObject(id string) {
+    if len(g.StackObjects) > 0 {
+        g.StackObjects[len(g.StackObjects)-1].Id = id
+    }
+}
+
+func (g *ArmGenerator) GetObject(id string) (int, StackObject) {
+    byteOffset := 0
+    for i := len(g.StackObjects) - 1; i >= 0; i-- {
+        byteOffset += g.StackObjects[i].Length
+        if g.StackObjects[i].Id == id {
+            return byteOffset - g.StackObjects[i].Length, g.StackObjects[i]
+        }
+    }
+    panic(fmt.Sprintf("No se encontró el objeto con ID: %s", id))
+}
+
+// Instrucciones ARM simuladas
+func (g *ArmGenerator) Add(rd, rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("ADD %s, %s, %s", rd, rs1, rs2))
+}
+func (g *ArmGenerator) Sub(rd, rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("SUB %s, %s, %s", rd, rs1, rs2))
+}
+func (g *ArmGenerator) Mul(rd, rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("MUL %s, %s, %s", rd, rs1, rs2))
+}
+func (g *ArmGenerator) Div(rd, rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("SDIV %s, %s, %s", rd, rs1, rs2))
+}
+func (g *ArmGenerator) Addi(rd, rs1 string, imm int) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("ADDI %s, %s, %d", rd, rs1, imm))
+}
+func (g *ArmGenerator) Str(rs1, rs2 string, offset int) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("STR %s, [%s, #%d]", rs1, rs2, offset))
+}
+func (g *ArmGenerator) Strb(rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("STRB %s, [%s]", rs1, rs2))
+}
+func (g *ArmGenerator) Ldr(rd, rs1 string, offset int) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("LDR %s, [%s, #%d]", rd, rs1, offset))
+}
+func (g *ArmGenerator) Mov(rd string, imm int) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("MOV %s, #%d", rd, imm))
+}
+func (g *ArmGenerator) Push(rs string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("STR %s, [SP, #-8]!", rs))
+}
+func (g *ArmGenerator) Pop(rd string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("LDR %s, [SP], #8", rd))
+}
+func (g *ArmGenerator) Svc() {
+    g.Instructions = append(g.Instructions, "SVC #0")
+}
+
+// Operaciones con flotantes
+func (g *ArmGenerator) Scvtf(rd, rs string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("SCVTF %s, %s", rd, rs))
+}
+func (g *ArmGenerator) Frintm(rd, rs string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("FRINTM %s, %s", rd, rs))
+}
+func (g *ArmGenerator) Fmov(rd, rs string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("FMOV %s, %s", rd, rs))
+}
+func (g *ArmGenerator) Fadd(rd, rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("FADD %s, %s, %s", rd, rs1, rs2))
+}
+func (g *ArmGenerator) Fsub(rd, rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("FSUB %s, %s, %s", rd, rs1, rs2))
+}
+func (g *ArmGenerator) Fmul(rd, rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("FMUL %s, %s, %s", rd, rs1, rs2))
+}
+func (g *ArmGenerator) Fdiv(rd, rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("FDIV %s, %s, %s", rd, rs1, rs2))
+}
+
+// Comparaciones y saltos
+func (g *ArmGenerator) Cmp(rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("CMP %s, %s", rs1, rs2))
+}
+func (g *ArmGenerator) Fcmp(rs1, rs2 string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("FCMP %s, %s", rs1, rs2))
+}
+func (g *ArmGenerator) Beq(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("BEQ %s", label))
+}
+func (g *ArmGenerator) Bne(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("BNE %s", label))
+}
+func (g *ArmGenerator) Bgt(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("BGT %s", label))
+}
+func (g *ArmGenerator) Blt(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("BLT %s", label))
+}
+func (g *ArmGenerator) Bge(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("BGE %s", label))
+}
+func (g *ArmGenerator) Ble(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("BLE %s", label))
+}
+func (g *ArmGenerator) B(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("B %s", label))
+}
+func (g *ArmGenerator) Cbz(rs, label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("CBZ %s, %s", rs, label))
+}
+func (g *ArmGenerator) Neg(rd, rs string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("NEG %s, %s", rd, rs))
+}
+func (g *ArmGenerator) Fneg(rd, rs string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("FNEG %s, %s", rd, rs))
+}
+func (g *ArmGenerator) Br(label string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("BR %s", label))
+}
+func (g *ArmGenerator) Ldrb(rd, rs1 string, offset int) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("LDRB %s, [%s, #%d]", rd, rs1, offset))
+}
+
+// Finalizar programa
+func (g *ArmGenerator) EndProgram() {
+    g.Mov("X0", 0)
+    g.Mov("X8", 93)
+    g.Svc()
+}
+
+func (g *ArmGenerator) Emit(instruction string) {
+    g.Instructions = append(g.Instructions, instruction)
+}
+
+func (g *ArmGenerator) PrintInteger(rs string) {
+    g.StdLib.Use("print_integer")
+    g.Instructions = append(g.Instructions, fmt.Sprintf("MOV X0, %s", rs))
+    g.Instructions = append(g.Instructions, "BL print_integer")
+}
+
+func (g *ArmGenerator) PrintFloat() {
+    g.StdLib.Use("print_integer")
+    g.StdLib.Use("print_double")
+    g.Instructions = append(g.Instructions, "BL print_double")
+}
+
+func (g *ArmGenerator) Comment(comment string) {
+    g.Instructions = append(g.Instructions, fmt.Sprintf("// %s", comment))
+}
+
+func (g *ArmGenerator) PrintString(rs string) {
+    g.StdLib.Use("print_string")
+    g.Instructions = append(g.Instructions, fmt.Sprintf("MOV X0, %s", rs))
+    g.Instructions = append(g.Instructions, "BL print_string")
+}
+
+func (g *ArmGenerator) PrintChar(ch rune) {
+    label := fmt.Sprintf("char_%d", ch)
+    if _, ok := g.StdLib.Symbols[label]; !ok {
+        val := string(ch)
+        if ch == '\n' {
+            val = "\\n"
+        }
+        g.StdLib.Symbols[label] = fmt.Sprintf("%s: .ascii \"%s\"", label, val)
+    }
+    g.Instructions = append(g.Instructions, fmt.Sprintf(`
+MOV X0, #1
+ADR X1, %s
+MOV X2, #1
+MOV X8, #64
+SVC #0`, label))
+}
+
+func (g *ArmGenerator) ConcatStrings() {
+    g.StdLib.Use("string_concat")
+    //str2 := g.PopObjectTo("X1")
+    //str1 := g.PopObjectTo("X0")
+    g.Comment("Ensure stack alignment")
+    g.Instructions = append(g.Instructions, "MOV X9, SP")
+    g.Instructions = append(g.Instructions, "AND X9, X9, #-16")
+    g.Instructions = append(g.Instructions, "MOV SP, X9")
+    g.Comment("Call string_concat (str1 + str2)")
+    g.Instructions = append(g.Instructions, "BL string_concat")
+    g.Push("X0")
+    g.PushObject(g.StringObject())
+}
+
+func (g *ArmGenerator) String() string {
+    var sb strings.Builder
+    sb.WriteString(".data\n")
+    sb.WriteString("heap: .space 4096\n")
+    sb.WriteString("heap_ptr: .quad heap\n")
+    sb.WriteString("buffer: .space 32\n")
+    for _, data := range g.Data {
+        sb.WriteString(data + "\n")
+    }
+    sb.WriteString(".text\n")
+    sb.WriteString(".global malloc\n")
+    sb.WriteString(`malloc:
+    mov x2, x10
+    add x0, x2, x0
+    mov x10, x0
+    mov x0, x2
+    ret
+`)
+    sb.WriteString(".global _start\n")
+    sb.WriteString("_start:\n")
+    sb.WriteString("    adr x10, heap\n")
+    // Instrucciones principales
+    for _, instr := range g.Instructions {
+        sb.WriteString(instr + "\n")
+    }
+    // FUNCIONES AUXILIARES (como int_to_ascii) AQUÍ
+    for _, f := range g.FuncInstrucions {
+        sb.WriteString(f + "\n")
+    }
+    sb.WriteString("// Finalizar programa\n")
+    sb.WriteString("\n\n// Foreign functions\n")
+    sb.WriteString("\n\n//libreria estandar\n")
+    sb.WriteString(g.StdLib.GetFunctionDefinitions())
+    return sb.String()
+}
+
+// StringToBytesArray convierte un string en un slice de bytes y agrega un terminador nulo al final.
+func StringToBytesArray(str string) []byte {
+    resultado := []byte(str)
+    resultado = append(resultado, 0) // Agregar el terminador nulo al final
+    return resultado
+}
+

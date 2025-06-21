@@ -1,4 +1,4 @@
-package main
+/*package main
 
 import (
 	"fmt"
@@ -95,6 +95,7 @@ func main() {
 		return string(input), err
 	}
 */
+/*
 func readStdin() (string, error) {
 	//input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/arhivoP.vch")
 	//input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/basicas.vch")
@@ -138,8 +139,24 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
 }
+*/
 
-/*package main
+
+
+
+
+
+
+
+
+
+
+
+
+
+//--------------aqui se divide el código para el servidor web----------------
+
+package main
 
 import (
 	"bytes"
@@ -195,16 +212,20 @@ func main() {
 		//PrintVerticalTree(arbolito, parser.RuleNames)
 		//----------------arm
 
+		
+		//----------------------
+        visitor := repl.NewReplVisitor()
+		
+        visitor.Visit(arbolito)
+
 		// 1. Crear el generador y el visitor ARM
-		generator := &repl.ARMGenerator{}
+		generator := repl.NewArmGenerator()
 		armVisitor := &repl.ARMVisitor{
-		Generator: generator,
-			// Puedes inicializar otros campos si lo necesitas
+			Generator: generator,
+			ScopeTrace: visitor.ScopeTrace, // <-- así
 		}
-
-		// 2. Recorrer el árbol con el visitor ARM
 		armVisitor.Visit(arbolito)
-
+        generator.UsesIntToAscii = armVisitor.UsesIntToAscii
 		asmCode := generator.ToString()
 		assemblerDir := "assembler"
 		os.MkdirAll(assemblerDir, 0755) // Crea la carpeta si no existe
@@ -215,11 +236,8 @@ func main() {
 		} else {
 			fmt.Println("Archivo Assembly generado correctamente en:", asmPath)
 		}
-		//----------------------
-        visitor := repl.NewReplVisitor()
 
-        visitor.Visit(arbolito)
-
+		
 		//fmt.Println("====aqui imprimire las variables de todos los entornos=========")
 		//visitor.ScopeTrace.GlobalScope.PrintScopeVariables(0)
 
@@ -245,20 +263,20 @@ func main() {
 		} else {
 			absRuta, _ := filepath.Abs(ruta)
 			fmt.Println("Tabla de símbolos generada correctamente en:", absRuta)
-
+						
 		}
 		fmt.Println("errores llegados: ", lexicalErrorListener.ErrorTable.Errors, syntaxErrorListener.ErrorTable.Errors)
 		allErrors := append(lexicalErrorListener.ErrorTable.Errors, syntaxErrorListener.ErrorTable.Errors...)
 		allErrors = append(allErrors, visitor.SemanticErrors.Errors...)
 		allErrors = errors.RemoveDuplicateErrors(allErrors)
-
+		
 		errorTable := &repl.ErrorTable{Errors: allErrors}
 		rutaErrores := filepath.Join("reportes", "errores.html")
 
 		os.MkdirAll("reportes", 0755)
 		_ = errors.SaveErrorsHTML(errorTable, rutaErrores)
 
-
+		
 
 		// Si no hay salida, muestra un mensaje por defecto
 		if output == "" {
@@ -266,7 +284,7 @@ func main() {
 		}
 		os.WriteFile("ultimo_codigo.vch", []byte(inputCode), 0644)
 
-
+		
 
         return c.SendString(output)
     })
@@ -278,7 +296,7 @@ func main() {
 			if err != nil {
 				return c.Status(500).SendString("No se pudo obtener la ruta del reporte")
 			}
-
+			
     	    // Abre el HTML en el navegador del servidor
     		go symbols.OpenHTML(absRuta)
 			return c.SendString(absRuta)
@@ -320,7 +338,7 @@ func main() {
 		input, err := os.ReadFile("/dev/stdin")
 		return string(input), err
 	}
-
+*/
 func readStdin() (string, error) {
 	//input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/arhivoP.vch")
 	input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/basicas.vch")
@@ -364,4 +382,4 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		}
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
-}*/
+}
