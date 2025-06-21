@@ -38,37 +38,19 @@ ldr x2, =len5
 ldr x2, [x2]
 mov w8, #64
 svc #0
-    # Print salida 6
-mov x0, #1
-adr x1, msg6
-ldr x2, =len6
-ldr x2, [x2]
-mov w8, #64
-svc #0
-    # Print salida 7
-mov x0, #1
-adr x1, msg7
-ldr x2, =len7
-ldr x2, [x2]
-mov w8, #64
-svc #0
     # Salida final
 mov x0, #0
 mov w8, #93
 svc #0
 
 .section .rodata
-msg1: .ascii "hola mundo\n"
+msg1: .ascii "1\n"
 len1: .quad . - msg1
-msg2: .ascii "hola a todos\n"
+msg2: .ascii "1.25\n"
 len2: .quad . - msg2
-msg3: .ascii "esto es como un string\n"
+msg3: .ascii "true\n"
 len3: .quad . - msg3
-msg4: .ascii "1\n"
+msg4: .ascii "hola causa\n"
 len4: .quad . - msg4
-msg5: .ascii "1.25\n"
+msg5: .ascii "H\n"
 len5: .quad . - msg5
-msg6: .ascii "True\n"
-len6: .quad . - msg6
-msg7: .ascii "A\n"
-len7: .quad . - msg7

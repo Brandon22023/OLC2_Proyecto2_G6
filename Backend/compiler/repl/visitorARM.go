@@ -47,9 +47,9 @@ func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) inte
         case "booleano":
             // Imprime "True" o "False" (puedes cambiarlo a minúsculas si prefieres)
             if strVal == "true" {
-                strVal = "True"
+                strVal = "true"
             } else {
-                strVal = "False"
+                strVal = "false"
             }
         case "caracter":
             // Ya está bien como string
