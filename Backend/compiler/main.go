@@ -1,4 +1,4 @@
-/*package main
+package main
 
 import (
 	"fmt"
@@ -14,8 +14,10 @@ import (
 )
 
 func main() {
-	// Leer código fuente desde archivo
+
+	// === Leer código fuente desde archivo
 	fmt.Println("===> Leyendo archivo de entrada...")
+
 	inputCode, err := readStdin()
 	if err != nil {
 		fmt.Println("Error leyendo entrada:", err)
@@ -71,16 +73,22 @@ func main() {
 
 	// === Generación de código Assembler
 	fmt.Println("===> Generando código ARM assembler...")
-	generator := &repl.ARMGenerator{}
+
+	generator := repl.NewArmGenerator()
 	armVisitor := &repl.ARMVisitor{
-		Generator: generator,
+		Generator:  generator,
+		ScopeTrace: visitor.ScopeTrace,
 	}
 	armVisitor.Visit(arbolito)
 
+	// Obtener código ensamblador
 	asmCode := generator.ToString()
+
+	// Guardar en archivo
 	assemblerDir := "assembler"
 	os.MkdirAll(assemblerDir, 0755)
 	asmPath := filepath.Join(assemblerDir, "assemblerprueba.s")
+
 	err = os.WriteFile(asmPath, []byte(asmCode), 0644)
 	if err != nil {
 		fmt.Println("Error al escribir el archivo Assembly:", err)
@@ -89,13 +97,7 @@ func main() {
 	}
 }
 
-/*
-	func readStdin() (string, error) {
-		input, err := os.ReadFile("/dev/stdin")
-		return string(input), err
-	}
-*/
-/*
+// === Lectura desde archivo ===
 func readStdin() (string, error) {
 	//input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/arhivoP.vch")
 	//input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/basicas.vch")
@@ -104,7 +106,7 @@ func readStdin() (string, error) {
 	return string(input), err
 }
 
-// Funciones para visualizar nuestro árbol
+// === Funciones para imprimir árbol sintáctico en consola ===
 func PrintVerticalTree(node antlr.Tree, ruleNames []string) {
 	printVerticalNode(node, ruleNames, "", true)
 }
@@ -139,16 +141,8 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
 }
-*/
 
-
-
-
-
-
-
-
-
+/*
 
 
 
@@ -212,10 +206,10 @@ func main() {
 		//PrintVerticalTree(arbolito, parser.RuleNames)
 		//----------------arm
 
-		
+
 		//----------------------
         visitor := repl.NewReplVisitor()
-		
+
         visitor.Visit(arbolito)
 
 		// 1. Crear el generador y el visitor ARM
@@ -237,7 +231,7 @@ func main() {
 			fmt.Println("Archivo Assembly generado correctamente en:", asmPath)
 		}
 
-		
+
 		//fmt.Println("====aqui imprimire las variables de todos los entornos=========")
 		//visitor.ScopeTrace.GlobalScope.PrintScopeVariables(0)
 
@@ -263,20 +257,20 @@ func main() {
 		} else {
 			absRuta, _ := filepath.Abs(ruta)
 			fmt.Println("Tabla de símbolos generada correctamente en:", absRuta)
-						
+
 		}
 		fmt.Println("errores llegados: ", lexicalErrorListener.ErrorTable.Errors, syntaxErrorListener.ErrorTable.Errors)
 		allErrors := append(lexicalErrorListener.ErrorTable.Errors, syntaxErrorListener.ErrorTable.Errors...)
 		allErrors = append(allErrors, visitor.SemanticErrors.Errors...)
 		allErrors = errors.RemoveDuplicateErrors(allErrors)
-		
+
 		errorTable := &repl.ErrorTable{Errors: allErrors}
 		rutaErrores := filepath.Join("reportes", "errores.html")
 
 		os.MkdirAll("reportes", 0755)
 		_ = errors.SaveErrorsHTML(errorTable, rutaErrores)
 
-		
+
 
 		// Si no hay salida, muestra un mensaje por defecto
 		if output == "" {
@@ -284,7 +278,7 @@ func main() {
 		}
 		os.WriteFile("ultimo_codigo.vch", []byte(inputCode), 0644)
 
-		
+
 
         return c.SendString(output)
     })
@@ -296,7 +290,7 @@ func main() {
 			if err != nil {
 				return c.Status(500).SendString("No se pudo obtener la ruta del reporte")
 			}
-			
+
     	    // Abre el HTML en el navegador del servidor
     		go symbols.OpenHTML(absRuta)
 			return c.SendString(absRuta)
@@ -338,7 +332,7 @@ func main() {
 		input, err := os.ReadFile("/dev/stdin")
 		return string(input), err
 	}
-*/
+*/ /*
 func readStdin() (string, error) {
 	//input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/arhivoP.vch")
 	input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/basicas.vch")
@@ -382,4 +376,4 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		}
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
-}
+}*/

@@ -3,6 +3,9 @@ package repl
 import (
 	parser "compiler/parser"
 	"fmt"
+	"math"
+	"strconv"
+	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
 )
@@ -15,34 +18,38 @@ type VariableEntry struct {
 
 type ARMVisitor struct {
 	parser.BaseVlangVisitor
-	Generator  *ArmGenerator
-	PrintCount int
-	VarMap     map[string]VariableEntry
-	ScopeTrace *ScopeTrace
-	UsesIntToAscii bool
+	Generator        *ArmGenerator
+	PrintCount       int
+	VarMap           map[string]VariableEntry
+	ScopeTrace       *ScopeTrace
+	UsesIntToAscii   bool
+	UsesFloatToAscii bool
+	UsesBoolToAscii  bool
+	UsesRuneToAscii  bool
 }
 
 type PrintValue struct {
 	Tipo  string
 	Valor string
 }
-//debido a que dicho arbol puede que le sea dificil manejarlo
-//ahora de igual forma leeremos los scopes donde estan los entornos de las variables
+
+// debido a que dicho arbol puede que le sea dificil manejarlo
+// ahora de igual forma leeremos los scopes donde estan los entornos de las variables
 func (v *ARMVisitor) CollectAllVariables(scope *BaseScope) {
-    for name, variable := range scope.variables {
-        valStr := fmt.Sprint(variable.Value.Value())
-        v.VarMap[name] = VariableEntry{
-            Tipo:  variable.Type,
-            Label: "msg_" + name,
-            Valor: valStr,
-        }
-        v.Generator.AddData(fmt.Sprintf("msg_%s: .ascii \"%s\\n\"", name, valStr))
-        v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - msg_%s", name, name))
-    }
-    // Recursivamente para los hijos
-    for _, child := range scope.Children() {
-        v.CollectAllVariables(child)
-    }
+	for name := range scope.variables {
+		entry, exists := v.VarMap[name]
+		if !exists {
+			continue
+		}
+
+		if entry.Tipo == "string" || entry.Tipo == "rune" {
+			// No se generan datos duplicados aquí para variables que ya fueron manejadas
+			// en VisitVariableDeclaration.
+		}
+	}
+	for _, child := range scope.Children() {
+		v.CollectAllVariables(child)
+	}
 }
 
 func (v *ARMVisitor) Visit(tree antlr.ParseTree) interface{} {
@@ -50,32 +57,46 @@ func (v *ARMVisitor) Visit(tree antlr.ParseTree) interface{} {
 }
 
 func (v *ARMVisitor) VisitPrograma(ctx *parser.ProgramaContext) interface{} {
-    v.VarMap = make(map[string]VariableEntry)
-    v.PrintCount = 0
+	v.VarMap = make(map[string]VariableEntry)
+	v.PrintCount = 0
 
-    // Etiquetas estándar para salto de línea y booleanos
-    v.Generator.AddData(`msg_nl: .ascii "\n"`)
-    v.Generator.AddData(`len_nl: .quad . - msg_nl`)
-    v.Generator.AddData(`msg_true: .ascii "true\n"`)
-    v.Generator.AddData(`len_true: .quad . - msg_true`)
-    v.Generator.AddData(`msg_false: .ascii "false\n"`)
-    v.Generator.AddData(`len_false: .quad . - msg_false`)
+	// Etiquetas estándar para salto de línea y booleanos
+	v.Generator.AddData(`msg_nl: .ascii "\n"`)
+	v.Generator.AddData(`len_nl: .quad . - msg_nl`)
+	v.Generator.AddData(`msg_true: .ascii "true"`)
+	v.Generator.AddData(`len_true: .quad . - msg_true`)
+	v.Generator.AddData(`msg_falsestr: .ascii "false"`)
+	v.Generator.AddData(`len_falsestr: .quad . - msg_falsestr`)
 
-    for _, decl := range ctx.AllDeclaraciones() {
-        v.Visit(decl)
-    }
-	
-    if v.Generator != nil && v.VarMap != nil && v.ScopeTrace != nil {
-        v.CollectAllVariables(v.ScopeTrace.GlobalScope)
-    }
+	// 🛠 FIX: Agrega esta constante
+	v.Generator.AddData(`.align 3`)
+	v.Generator.AddData(`float_100: .double 100.0`)
+
+	for _, decl := range ctx.AllDeclaraciones() {
+		v.Visit(decl)
+	}
+
+	if v.Generator != nil && v.VarMap != nil && v.ScopeTrace != nil {
+		v.CollectAllVariables(v.ScopeTrace.GlobalScope)
+	}
 	if v.UsesIntToAscii {
 		v.Generator.AddIntToAsciiFunction()
 	}
-    v.Generator.AddInstruction("    # Salida final")
-    v.Generator.AddInstruction("mov x0, #0")
-    v.Generator.AddInstruction("mov w8, #93")
-    v.Generator.AddInstruction("svc #0")
-    return nil
+	if v.UsesFloatToAscii {
+		v.Generator.AddFloatToAsciiFunction()
+	}
+	if v.UsesBoolToAscii {
+		v.Generator.AddBoolToAsciiFunction()
+	}
+	if v.UsesRuneToAscii {
+		v.Generator.AddRuneToAsciiFunction()
+	}
+
+	v.Generator.AddInstruction("    # Salida final")
+	v.Generator.AddInstruction("mov x0, #0")
+	v.Generator.AddInstruction("mov w8, #93")
+	v.Generator.AddInstruction("svc #0")
+	return nil
 }
 
 func (v *ARMVisitor) VisitDeclaraciones(ctx *parser.DeclaracionesContext) interface{} {
@@ -90,118 +111,174 @@ func (v *ARMVisitor) VisitDeclaraciones(ctx *parser.DeclaracionesContext) interf
 
 func (v *ARMVisitor) VisitVariableDeclaration(ctx *parser.VariableDeclarationContext) interface{} {
 	id := ctx.ID().GetText()
-	tipo := "int" // valor por defecto si no hay tipo
+	tipo := normalizeTipo(ctx.TIPO().GetText())
+	val := v.Visit(ctx.Expresion())
 
-	if ctx.TIPO() != nil {
-		tipo = ctx.TIPO().GetText()
-	}
+	if pv, ok := val.(PrintValue); ok {
+		label := id
 
-	var valor string
-	if ctx.Expresion() != nil {
-		val := v.Visit(ctx.Expresion())
-		if pv, ok := val.(PrintValue); ok {
-			valor = pv.Valor
+		v.VarMap[id] = VariableEntry{
+			Tipo:  tipo,
+			Label: label,
+			Valor: pv.Valor,
 		}
-	} else {
+
 		switch tipo {
 		case "int":
-			valor = "0"
-		case "string":
-			valor = ""
+			v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad %d", label, toInt(pv.Valor)))
 		case "bool":
-			valor = "false"
-		case "rune":
-			valor = "?"
+			b := 0
+			if pv.Valor == "true" {
+				b = 1
+			}
+			v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad %d", label, b))
 		case "float64":
-			valor = "0.0"
-		default:
-			valor = "(undef)"
+			bits := math.Float64bits(toFloat(pv.Valor))
+			v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", label, bits))
+		case "string":
+			v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\"", label, pv.Valor))
+			v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - %s", label, label))
+		case "rune":
+			v.Generator.AddData(fmt.Sprintf("%s: .byte %d", label, toRune(pv.Valor)))
+			v.Generator.AddData(fmt.Sprintf("len_%s: .quad 1", label))
 		}
 	}
 
-	label := fmt.Sprintf("msg_%s", id)
-	v.VarMap[id] = VariableEntry{Tipo: tipo, Label: label, Valor: valor}
-	v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\\n\"", label, valor))
-	v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - %s", id, label))
 	return nil
 }
 
 func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) interface{} {
-    for _, expr := range ctx.AllExpresion() {
-        val := v.Visit(expr)
+	exprs := ctx.AllExpresion()
 
-        // Si es un identificador (variable)
-        if id, ok := val.(string); ok {
-            if entry, exists := v.VarMap[id]; exists {
-                switch entry.Tipo {
-                case "int":
-                    v.UsesIntToAscii = true
-    				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%s", entry.Valor))
-					v.Generator.AddInstruction("ldr x1, =buffer")
-					v.Generator.AddInstruction("bl int_to_ascii")
-					v.Generator.AddInstruction("mov x2, x0") // longitud
-					v.Generator.AddInstruction("mov x1, x1") // puntero al string
-					v.Generator.AddInstruction("mov x0, #1") // stdout
-					v.Generator.AddInstruction("mov w8, #64")
-					v.Generator.AddInstruction("svc #0")
-                    // Imprimir salto de línea
-                    v.Generator.AddInstruction("mov x0, #1")
-                    v.Generator.AddInstruction("ldr x1, =msg_nl")
-                    v.Generator.AddInstruction("ldr x2, =len_nl")
-                    v.Generator.AddInstruction("ldr x2, [x2]")
-                    v.Generator.AddInstruction("mov w8, #64")
-                    v.Generator.AddInstruction("svc #0")
-                case "bool":
-                    boolLabel := "msg_true"
-                    lenLabel := "len_true"
-                    if entry.Valor == "false" {
-                        boolLabel = "msg_false"
-                        lenLabel = "len_false"
-                    }
-                    v.printSyscall(boolLabel, lenLabel)
-                default:
-                    v.printSyscall(entry.Label, fmt.Sprintf("len_%s", id))
-                }
-            }
-        } else if pv, ok := val.(PrintValue); ok {
-            switch pv.Tipo {
-            case "entero":
-                v.UsesIntToAscii = true
-				v.Generator.AddMov("x0", "#"+pv.Valor)
-				v.Generator.AddLdr("x1", "buffer")
-				v.Generator.AddBl("int_to_ascii")
-				v.Generator.AddInstruction("mov x2, x0")
-				v.Generator.AddInstruction("mov x1, x1")
-				v.Generator.AddInstruction("mov x0, #1")
-				v.Generator.AddInstruction("mov w8, #64")
-				v.Generator.AddInstruction("svc #0")
-                // salto de línea
-                v.Generator.AddMov("x0", "#1")
-                v.Generator.AddLdr("x1", "msg_nl")
-                v.Generator.AddLdr("x2", "len_nl")
-                v.Generator.AddInstruction("ldr x2, [x2]")
-                v.Generator.AddMov("w8", "#64")
-                v.Generator.AddSvc()
-            case "booleano":
-                boolLabel := "msg_true"
-                lenLabel := "len_true"
-                if pv.Valor == "false" {
-                    boolLabel = "msg_false"
-                    lenLabel = "len_false"
-                }
-                v.printSyscall(boolLabel, lenLabel)
-            case "cadena", "caracter":
-                v.PrintCount++
-                label := fmt.Sprintf("msg%d", v.PrintCount)
-                lenLabel := fmt.Sprintf("len%d", v.PrintCount)
-                v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\\n\"", label, pv.Valor))
-                v.Generator.AddData(fmt.Sprintf("%s: .quad . - %s", lenLabel, label))
-                v.printSyscall(label, lenLabel)
-				fmt.Println("Generando etiqueta:", label)
-            }
-        }
-    }
-    return nil
+	for _, expr := range exprs {
+		val := v.Visit(expr)
+
+		var pv PrintValue
+		ok := false
+
+		if pval, isPv := val.(PrintValue); isPv {
+			pv = pval
+			ok = true
+		} else if id, isId := val.(string); isId {
+			entry, exists := v.VarMap[id]
+			if !exists {
+				fmt.Printf("ERROR: variable no encontrada: %s\n", id)
+				continue
+			}
+			pv = PrintValue{Tipo: entry.Tipo, Valor: entry.Valor}
+			ok = true
+		}
+
+		if !ok {
+			fmt.Println("ERROR: valor no reconocido en print")
+			continue
+		}
+
+		switch pv.Tipo {
+		case "int", "entero":
+			v.UsesIntToAscii = true
+			v.Generator.AddMov("x0", "#"+pv.Valor)
+			v.Generator.AddLdr("x1", "buffer")
+			v.Generator.AddBl("int_to_ascii")
+			v.Generator.AddInstruction("mov x2, x0")
+			v.Generator.AddInstruction("mov x1, x1")
+			v.Generator.AddInstruction("mov x0, #1")
+			v.Generator.AddInstruction("mov w8, #64")
+			v.Generator.AddInstruction("svc #0")
+
+		case "float64", "decimal":
+			v.UsesFloatToAscii = true
+			label := ""
+
+			// Si el valor es una variable, accede a la etiqueta original
+			if id, ok := expr.(*parser.IdContext); ok {
+				varName := id.GetText()
+				entry, exists := v.VarMap[varName]
+				if exists {
+					label = entry.Label
+				}
+			}
+
+			if label != "" {
+				// Imprimir directamente desde la variable
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+				v.Generator.AddInstruction("ldr d0, [x1]")
+			} else {
+				// Imprimir un literal flotante
+				v.PrintCount++
+				label = fmt.Sprintf("float_literal_%d", v.PrintCount)
+				bits := math.Float64bits(toFloat(pv.Valor))
+				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", label, bits))
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+				v.Generator.AddInstruction("ldr d0, [x1]")
+			}
+
+			// Llamar a la función de conversión y luego imprimir
+			v.Generator.AddLdr("x1", "buffer")        // buffer
+			v.Generator.AddBl("float_to_ascii")       // x0 ← length, x1 se mueve internamente
+			v.Generator.AddInstruction("mov x2, x0")  // x2 = length
+			v.Generator.AddLdr("x1", "buffer")        // ❗️RELOAD x1 to buffer
+			v.Generator.AddInstruction("mov x0, #1")  // stdout
+			v.Generator.AddInstruction("mov w8, #64") // syscall write
+			v.Generator.AddInstruction("svc #0")
+
+		case "bool", "booleano":
+			v.UsesBoolToAscii = true
+			valBool := "0"
+			if pv.Valor == "true" {
+				valBool = "1"
+			}
+			v.Generator.AddMov("x0", valBool)
+			v.Generator.AddBl("bool_to_ascii")
+			v.Generator.AddInstruction("mov x2, x0")
+			v.Generator.AddInstruction("mov x1, x1")
+			v.Generator.AddInstruction("mov x0, #1")
+			v.Generator.AddInstruction("mov w8, #64")
+			v.Generator.AddInstruction("svc #0")
+
+		case "caracter":
+			v.UsesRuneToAscii = true
+			r := []rune(pv.Valor)[0]
+			v.Generator.AddMov("x0", fmt.Sprintf("%d", r))
+			v.Generator.AddLdr("x1", "buffer")
+			v.Generator.AddBl("rune_to_ascii")
+			v.Generator.AddInstruction("mov x2, x0")
+			v.Generator.AddInstruction("mov x1, x1")
+			v.Generator.AddInstruction("mov x0, #1")
+			v.Generator.AddInstruction("mov w8, #64")
+			v.Generator.AddInstruction("svc #0")
+
+		case "string", "cadena":
+			v.PrintCount++
+			label := fmt.Sprintf("msg%d", v.PrintCount)
+			lenLabel := fmt.Sprintf("len%d", v.PrintCount)
+			v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\"", label, pv.Valor))
+			v.Generator.AddData(fmt.Sprintf("%s: .quad . - %s", lenLabel, label))
+			v.printSyscall(label, lenLabel)
+
+		case "rune":
+			v.UsesRuneToAscii = true
+			v.Generator.AddMov("x0", fmt.Sprintf("%d", toRune(pv.Valor)))
+			v.Generator.AddLdr("x1", "buffer")
+			v.Generator.AddBl("rune_to_ascii")
+			v.Generator.AddInstruction("mov x2, x0")
+			v.Generator.AddInstruction("mov x1, x1")
+			v.Generator.AddInstruction("mov x0, #1")
+			v.Generator.AddInstruction("mov w8, #64")
+			v.Generator.AddInstruction("svc #0")
+
+		}
+	}
+
+	// SOLO al final se imprime salto de línea
+	v.Generator.AddMov("x0", "#1")
+	v.Generator.AddLdr("x1", "msg_nl")
+	v.Generator.AddLdr("x2", "len_nl")
+	v.Generator.AddInstruction("ldr x2, [x2]")
+	v.Generator.AddMov("w8", "#64")
+	v.Generator.AddSvc()
+
+	return nil
 }
 
 func (v *ARMVisitor) VisitId(ctx *parser.IdContext) interface{} {
@@ -229,7 +306,7 @@ func (v *ARMVisitor) VisitValorCadena(ctx *parser.ValorCadenaContext) interface{
 }
 
 func (v *ARMVisitor) VisitValorBooleano(ctx *parser.ValorBooleanoContext) interface{} {
-	return PrintValue{Tipo: "booleano", Valor: ctx.GetText()}
+	return PrintValue{Tipo: "bool", Valor: ctx.GetText()}
 }
 
 func (v *ARMVisitor) VisitValorCaracter(ctx *parser.ValorCaracterContext) interface{} {
@@ -265,45 +342,77 @@ func (v *ARMVisitor) VisitIMCPLICIT(ctx *parser.IMCPLICITContext) interface{} {
 }
 
 func (v *ARMVisitor) replaceVarData(id string, newValue string) {
-	label := fmt.Sprintf("msg_%s", id)
-	lenLabel := fmt.Sprintf("len_%s", id)
-
-	// Actualizar también el valor en VarMap
 	entry := v.VarMap[id]
 	entry.Valor = newValue
 	v.VarMap[id] = entry
 
-	newData := []string{}
-	skip := false
-
-	for _, line := range v.Generator.Data {
-		if skip {
-			skip = false
-			continue
-		}
-		if len(line) > 0 && line[:len(label)+1] == label+":" {
-			skip = true
-			continue
-		}
-		newData = append(newData, line)
+	// Evitar reemplazo directo de .data
+	if entry.Tipo == "string" || entry.Tipo == "rune" {
+		entry.Valor = newValue
+		v.VarMap[id] = entry
+		return
 	}
-	v.Generator.Data = newData
 
-	v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\\n\"", label, newValue))
-	v.Generator.AddData(fmt.Sprintf("%s: .quad . - %s", lenLabel, label))
+	label := entry.Label
+	for i, line := range v.Generator.Data {
+		if strings.HasPrefix(line, label+":") {
+			v.Generator.Data[i] = fmt.Sprintf("%s: .quad %s", label, newValue)
+			break
+		}
+	}
 }
 
 func (v *ARMVisitor) VisitAsignacionLUEGO(ctx *parser.AsignacionLUEGOContext) interface{} {
 	id := ctx.ID().GetText()
-	tipo := ctx.TIPO().GetText()
 	val := v.Visit(ctx.Expresion())
 
 	if pv, ok := val.(PrintValue); ok {
 		if entry, exists := v.VarMap[id]; exists {
-			entry.Tipo = tipo
-			v.replaceVarData(id, pv.Valor) // <-- Esto actualiza también el valor internamente
+			tipo := normalizeTipo(pv.Tipo)
+
+			if tipo != entry.Tipo {
+				fmt.Printf("ERROR: tipo incompatible en asignación a '%s': %s vs %s\n", id, entry.Tipo, tipo)
+				return nil
+			}
+
+			switch tipo {
+			case "int":
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", toInt(pv.Valor)))
+				v.Generator.AddInstruction("str x0, [x1]")
+			case "bool":
+				b := 0
+				if pv.Valor == "true" {
+					b = 1
+				}
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", b))
+				v.Generator.AddInstruction("str x0, [x1]")
+			case "float64":
+				bits := math.Float64bits(toFloat(pv.Valor))
+				tmp := v.Generator.GenerateUniqueLabel("flt")
+				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", tmp, bits))
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", tmp))
+				v.Generator.AddInstruction("ldr d0, [x0]")
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+				v.Generator.AddInstruction("str d0, [x1]")
+			case "string":
+				label := v.Generator.GenerateUniqueLabel("str")
+				v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\"", label, pv.Valor))
+				v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - %s", label, label))
+				entry.Label = label
+				v.VarMap[id] = entry
+			case "rune":
+				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", toRune(pv.Valor)))
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+				v.Generator.AddInstruction("strb w0, [x1]")
+			}
+
+			entry.Valor = pv.Valor
+			v.VarMap[id] = entry
 		}
 	}
+
 	return nil
 }
 
@@ -317,9 +426,15 @@ func (v *ARMVisitor) VisitSumres(ctx *parser.SumresContext) interface{} {
 		if l.Tipo == "cadena" && r.Tipo == "cadena" {
 			return PrintValue{Tipo: "cadena", Valor: l.Valor + r.Valor}
 		}
+		if l.Tipo == "entero" && r.Tipo == "entero" {
+			return PrintValue{Tipo: "int", Valor: fmt.Sprintf("%d", toInt(l.Valor)+toInt(r.Valor))}
+		}
 		return PrintValue{Tipo: "float64", Valor: formatNumber(toFloat(l.Valor) + toFloat(r.Valor))}
 	case "-":
-		return PrintValue{Tipo: "float64", Valor: formatNumber(toFloat(l.Valor) + toFloat(r.Valor))}
+		if l.Tipo == "entero" && r.Tipo == "entero" {
+			return PrintValue{Tipo: "int", Valor: fmt.Sprintf("%d", toInt(l.Valor)-toInt(r.Valor))}
+		}
+		return PrintValue{Tipo: "float64", Valor: formatNumber(toFloat(l.Valor) - toFloat(r.Valor))}
 	}
 	return nil
 }
@@ -340,16 +455,35 @@ func (v *ARMVisitor) VisitMultdivmod(ctx *parser.MultdivmodContext) interface{} 
 	return nil
 }
 
-func toFloat(s string) float64 {
-	var f float64
-	fmt.Sscanf(s, "%f", &f)
-	return f
+func toFloat(valor string) float64 {
+	val, err := strconv.ParseFloat(valor, 64)
+	if err != nil {
+		return 0.0
+	}
+	return val
 }
 
-func toInt(s string) int {
-	var i int
-	fmt.Sscanf(s, "%d", &i)
-	return i
+func toInt(valor string) int {
+	val, err := strconv.Atoi(valor)
+	if err != nil {
+		return 0
+	}
+	return val
+}
+
+func toBool(valor string) int {
+	if valor == "true" {
+		return 1
+	}
+	return 0
+}
+
+func toRune(valor string) rune {
+	runes := []rune(valor)
+	if len(runes) > 0 {
+		return runes[0]
+	}
+	return 0
 }
 
 func formatNumber(n float64) string {
@@ -360,10 +494,117 @@ func formatNumber(n float64) string {
 }
 
 func (v *ARMVisitor) printSyscall(label, lenLabel string) {
-    v.Generator.AddMov("x0", "#1")
-    v.Generator.AddLdr("x1", label)
-    v.Generator.AddLdr("x2", lenLabel)
-    v.Generator.AddInstruction("ldr x2, [x2]")
-    v.Generator.AddMov("w8", "#64")
-    v.Generator.AddSvc()
+	v.Generator.AddMov("x0", "#1")
+	v.Generator.AddLdr("x1", label)
+	v.Generator.AddLdr("x2", lenLabel)
+	v.Generator.AddInstruction("ldr x2, [x2]")
+	v.Generator.AddMov("w8", "#64")
+	v.Generator.AddSvc()
+}
+
+func normalizeTipo(t string) string {
+	switch t {
+	case "entero":
+		return "int"
+	case "booleano":
+		return "bool"
+	case "cadena":
+		return "string"
+	case "caracter":
+		return "rune"
+	case "decimal":
+		return "float64"
+	}
+	return t
+}
+
+func (v *ARMVisitor) VisitVariableDeclarationImmutable(ctx *parser.VariableDeclarationImmutableContext) interface{} {
+	id := ctx.ID().GetText()
+	fmt.Println("DEBUG: Entrando a VariableDeclarationImmutable para:", id)
+
+	if ctx.ASSIGN() == nil {
+		fmt.Println("DEBUG: No hay asignación para", id)
+		return nil
+	}
+
+	val := v.Visit(ctx.Expresion())
+	if pv, ok := val.(PrintValue); ok {
+		tipo := normalizeTipo(pv.Tipo)
+
+		// REASIGNACIÓN
+		if entry, exists := v.VarMap[id]; exists {
+			fmt.Println("DEBUG: Reasignación detectada para:", id)
+
+			if tipo != entry.Tipo {
+				fmt.Printf("ERROR: Tipo incompatible en reasignación de '%s'. Esperado '%s', recibido '%s'\n", id, entry.Tipo, tipo)
+				return nil
+			}
+
+			switch tipo {
+			case "int":
+				intVal := toInt(pv.Valor)
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", intVal))
+				v.Generator.AddInstruction("str x0, [x1]")
+			case "bool":
+				boolVal := 0
+				if pv.Valor == "true" {
+					boolVal = 1
+				}
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", boolVal))
+				v.Generator.AddInstruction("str x0, [x1]")
+			case "float64":
+				floatBits := math.Float64bits(toFloat(pv.Valor))
+				tempLabel := v.Generator.GenerateUniqueLabel("float_temp")
+				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", tempLabel, floatBits))
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", tempLabel))
+				v.Generator.AddInstruction("ldr x0, [x0]")
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+				v.Generator.AddInstruction("str x0, [x1]")
+			case "string", "rune":
+				v.replaceVarData(id, pv.Valor)
+			}
+
+			// Actualiza el valor en VarMap
+			entry.Valor = pv.Valor
+			v.VarMap[id] = entry
+			return nil
+		}
+
+		// DECLARACIÓN
+		if _, exists := v.VarMap[id]; !exists {
+			fmt.Println("DEBUG: Declaración nueva para:", id)
+
+			label := id
+			v.VarMap[id] = VariableEntry{Tipo: normalizeTipo(tipo), Valor: pv.Valor, Label: label}
+
+			switch tipo {
+			case "int":
+				val := toInt(pv.Valor)
+				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad %d", label, val))
+				v.Generator.AddData(fmt.Sprintf("len_%s: .quad 8", label))
+			case "bool":
+				val := 0
+				if pv.Valor == "true" {
+					val = 1
+				}
+				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad %d", label, val))
+				v.Generator.AddData(fmt.Sprintf("len_%s: .quad 8", label))
+			case "float64":
+				floatBits := math.Float64bits(toFloat(pv.Valor))
+				tempLabel := v.Generator.GenerateUniqueLabel("float_temp")
+				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", tempLabel, floatBits))
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", tempLabel))
+				v.Generator.AddInstruction("ldr d0, [x0]") // ✅ CORREGIDO
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+				v.Generator.AddInstruction("str d0, [x1]") // ✅ CORREGIDO
+
+			case "string", "rune":
+				v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\"", label, pv.Valor))
+				v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - %s", label, label))
+			}
+		}
+	}
+	return nil
 }

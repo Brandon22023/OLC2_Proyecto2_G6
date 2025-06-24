@@ -1,32 +1,40 @@
-print(5 + 7)
-print("Hola arm")
-print(1.25)
-print(true)
-print('H')
-mut puy int = 100
-print("valor de puy: ", puy)
-
-mut i int = 15
-mut j string = "como estas"
+print(5)
+print("HOla mundo arm", 5)
+print(20.5)
+print('a')
+print(3.1415)
+print("ho" + "la")
+print(5 + 5)            
+print(5.0 + 6.2)        
+print("a" + "b")        
+print(3 + 4, true, 'A')
+mut x int = 10
+mut s string = "Hola"
+mut y float64 = 10.5
 mut k rune = 'B'
-print(i,j,k)
-mut defect int 
-mut defect1 bool
-print("valor por defecto de un int: ", defect)
-print("valor por defecto de un bool: ", defect1)  
-mut var int = 15 + 15
+mut l bool = false 
+print(x)
+print("valor s: " , s)
+print(y)
+print(k)
+print(l)
+mut var int = 15+15
 print("valor de var: ", var)
-print("GANO GUATE VAMOSS", 5 + 5.5)
-print(10 % 3)
-print(1 / 3.0)
-print(1.0 * 13.0)
-print("conca" + "tenacion")
+var = 50
+print("nuevo valor de var: ", var)
+mut u int = 10
+mut o float64 = 3.14
+mut b bool = false
+mut r rune = 'Z'
 
-i += 100
-print("ahora el valor de I es: ", i)
-i -= 100
-print("ahora el valor de I es: ", i)
-defect1 bool = true
-print("valor del booleno cambiado porque guate gano GUATE ES CLAVE: ", defect1)
-defect int = 5
-print("valor del booleno cambiado porque guate gano GUATE ES CLAVE: ", defect)
+u = 20
+o = 6.28
+s = "Mundo"
+b = true
+r = 'X'
+
+print(u)
+print(o)
+print(s)
+print(b)
+print(r)
