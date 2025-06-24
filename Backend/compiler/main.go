@@ -1,4 +1,4 @@
-package main
+/*package main
 
 import (
 	"fmt"
@@ -141,8 +141,8 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
 }
+*/
 
-/*
 
 
 
@@ -327,19 +327,8 @@ func main() {
     app.Listen(":3000")
 }
 
-/*
-	func readStdin() (string, error) {
-		input, err := os.ReadFile("/dev/stdin")
-		return string(input), err
-	}
-*/ /*
-func readStdin() (string, error) {
-	//input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/arhivoP.vch")
-	input, err := os.ReadFile("/home/brandon/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/basicas.vch")
-	//input, err := os.ReadFile("/home/pablo/Escritorio/OLC2_Proyecto1_202300813/Backend/compiler/arhivoP.vch")
-	//input, err := os.ReadFile("/home/vboxuser/Documents/OLC2_Proyecto1_202300813/Backend/compiler/arhivoP.vch")
-	return string(input), err
-}
+
+
 
 // Funciones para visualizar nuestro arbol
 func PrintVerticalTree(node antlr.Tree, ruleNames []string) {
@@ -376,4 +365,4 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		}
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
-}*/
+}

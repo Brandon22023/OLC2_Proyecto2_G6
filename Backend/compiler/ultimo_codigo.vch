@@ -1,7 +1,64 @@
-print("hola mundo")
-print("hola causa")
-print(1)
-print("-----------------------------")
-print(25)
-print(2025)
-print(19)
+print(5)
+print("HOla mundo arm", 5)
+print(20.5)
+print('a')
+print(3.1415)
+print("ho" + "la")
+print(5 + 5)            
+print(5.0 + 6.2)        
+print("a" + "b")        
+print(3 + 4, true, 'A')
+mut x int = 10
+mut s string = "Hola"
+mut y float64 = 10.5
+mut k rune = 'B'
+mut l bool = false 
+print(x)
+print("valor s: " , s)
+print(y)
+print(k)
+print(l)
+mut var int = 15+15
+print("valor de var: ", var)
+var = 50
+print("nuevo valor de var: ", var)
+mut u int = 10
+mut o float64 = 3.14
+mut b bool = false
+mut r rune = 'Z'
+
+u = 20
+o = 6.28
+s = "Mundo"
+b = true
+r = 'X'
+
+print(u)
+print(o)
+print(s)
+print(b)
+print(r)
+print(5>3)
+print(8>17)
+print(5>=5)
+print(5<=5)
+print(5<=4)
+print(5<4)
+print(5.10<10.5)
+print(5.10>10.5)
+print(10.5>=10.5)
+print(5 == 5)
+print(5 != 3)
+print(5.0 == 5)
+print(5 == 5.0)
+print(3.2 == 3.2)
+print(3.2 != 5)
+print(true && false)
+print(true || false)
+print(false && false)
+print(true && true)
+print(false || false)
+print(!true)
+print(!false)
+print(-5)
+print(-3.14)
