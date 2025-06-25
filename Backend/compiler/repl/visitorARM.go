@@ -341,11 +341,11 @@ func (v *ARMVisitor) VisitValorexpr(ctx *parser.ValorexprContext) interface{} {
 }
 
 func (v *ARMVisitor) VisitValorEntero(ctx *parser.ValorEnteroContext) interface{} {
-	return PrintValue{Tipo: "entero", Valor: ctx.GetText()}
+	return PrintValue{Tipo: "int", Valor: ctx.GetText()}
 }
 
 func (v *ARMVisitor) VisitValorDecimal(ctx *parser.ValorDecimalContext) interface{} {
-	return PrintValue{Tipo: "decimal", Valor: ctx.GetText()}
+	return PrintValue{Tipo: "float64", Valor: ctx.GetText()}
 }
 
 func (v *ARMVisitor) VisitValorCadena(ctx *parser.ValorCadenaContext) interface{} {
