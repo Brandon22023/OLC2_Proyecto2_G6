@@ -1,4 +1,4 @@
-/*package main
+package main
 
 import (
 	"fmt"
@@ -141,15 +141,9 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
 }
-*/
-
-
-
-
-
 
 //--------------aqui se divide el código para el servidor web----------------
-
+/*
 package main
 
 import (
@@ -366,3 +360,4 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
 }
+*/

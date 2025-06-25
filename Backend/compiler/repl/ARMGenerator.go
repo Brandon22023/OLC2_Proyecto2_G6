@@ -470,9 +470,10 @@ func (g *ArmGenerator) String() string {
 	for _, f := range g.FuncInstrucions {
 		sb.WriteString(f + "\n")
 	}
-	sb.WriteString("// Finalizar programa\n")
-	sb.WriteString("\n\n// Foreign functions\n")
-	sb.WriteString("\n\n//libreria estandar\n")
+	sb.WriteString("# Finalizar programa\n")
+	sb.WriteString("\n\n# Foreign functions\n")
+	sb.WriteString("\n\n# libreria estandar\n")
+
 	sb.WriteString(g.StdLib.GetFunctionDefinitions())
 	return sb.String()
 }
@@ -603,6 +604,34 @@ bool_true:
     ldr x0, =len_true
     ldr x0, [x0]
     mov x1, x2
+    ret
+`)
+}
+
+func (g *ArmGenerator) AddStringCompareFunction() {
+	if g.StdLib.used["strcmp"] {
+		return // evitar definirla más de una vez
+	}
+	g.StdLib.used["strcmp"] = true
+
+	g.FuncInstrucions = append(g.FuncInstrucions, `
+strcmp:
+    // Guardar los punteros en registros temporales
+    mov x9, x0   // x9 = ptr1
+    mov x10, x1  // x10 = ptr2
+
+.loop:
+    ldrb w2, [x9], #1
+    ldrb w3, [x10], #1
+    cmp w2, w3
+    bne .noteq
+    cmp w2, #0
+    bne .loop
+    mov x0, #0   // iguales
+    ret
+
+.noteq:
+    sub x0, x2, x3
     ret
 `)
 }

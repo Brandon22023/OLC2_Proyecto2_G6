@@ -106,6 +106,23 @@ func (v *ARMVisitor) VisitDeclaraciones(ctx *parser.DeclaracionesContext) interf
 	if ctx.VarDcl() != nil {
 		return v.Visit(ctx.VarDcl())
 	}
+	if ctx.FuncMain() != nil {
+		return v.Visit(ctx.FuncMain())
+	}
+	if ctx.FuncDcl() != nil {
+		return v.Visit(ctx.FuncDcl())
+	}
+	if ctx.StructDcl() != nil {
+		return v.Visit(ctx.StructDcl())
+	}
+	return nil
+}
+
+func (v *ARMVisitor) VisitFuncMain(ctx *parser.FuncMainContext) interface{} {
+	fmt.Println("VisitFuncMain ejecutado")
+	for _, decl := range ctx.Block().AllDeclaraciones() {
+		v.Visit(decl)
+	}
 	return nil
 }
 
@@ -136,7 +153,8 @@ func (v *ARMVisitor) VisitVariableDeclaration(ctx *parser.VariableDeclarationCon
 			bits := math.Float64bits(toFloat(pv.Valor))
 			v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", label, bits))
 		case "string":
-			v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\"", label, pv.Valor))
+			// ✅ Cambio importante: usar .asciz para strcmp
+			v.Generator.AddData(fmt.Sprintf("%s: .asciz \"%s\"", label, pv.Valor))
 			v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - %s", label, label))
 		case "rune":
 			v.Generator.AddData(fmt.Sprintf("%s: .byte %d", label, toRune(pv.Valor)))
@@ -148,6 +166,7 @@ func (v *ARMVisitor) VisitVariableDeclaration(ctx *parser.VariableDeclarationCon
 }
 
 func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) interface{} {
+	fmt.Println("Entrando a VisitPrintStatement con exprs:", ctx.GetText())
 	exprs := ctx.AllExpresion()
 
 	for _, expr := range exprs {
@@ -201,45 +220,44 @@ func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) inte
 				v.Generator.AddInstruction("mov w8, #64")
 				v.Generator.AddInstruction("svc #0")
 			}
-			
 
 		case "float64", "decimal":
-            v.UsesFloatToAscii = true
+			v.UsesFloatToAscii = true
 
-            label := ""
+			label := ""
 
-            // Si el valor es una variable, accede a la etiqueta original
-            if id, ok := expr.(*parser.IdContext); ok {
-                varName := id.GetText()
-                entry, exists := v.VarMap[varName]
-                if exists {
-                    label = entry.Label
-                }
-            }
+			// Si el valor es una variable, accede a la etiqueta original
+			if id, ok := expr.(*parser.IdContext); ok {
+				varName := id.GetText()
+				entry, exists := v.VarMap[varName]
+				if exists {
+					label = entry.Label
+				}
+			}
 
-            valorStr := pv.Valor
-            if label != "" {
-                // Imprimir directamente desde la variable
-                v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
-                v.Generator.AddInstruction("ldr d0, [x1]")
-            } else {
-                // Imprimir un literal flotante (positivo o negativo)
-                v.PrintCount++
-                label = fmt.Sprintf("float_literal_%d", v.PrintCount)
-                bits := math.Float64bits(toFloat(valorStr)) // Usa el valor real, con signo
-                v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", label, bits))
-                v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
-                v.Generator.AddInstruction("ldr d0, [x1]")
-            }
+			valorStr := pv.Valor
+			if label != "" {
+				// Imprimir directamente desde la variable
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+				v.Generator.AddInstruction("ldr d0, [x1]")
+			} else {
+				// Imprimir un literal flotante (positivo o negativo)
+				v.PrintCount++
+				label = fmt.Sprintf("float_literal_%d", v.PrintCount)
+				bits := math.Float64bits(toFloat(valorStr)) // Usa el valor real, con signo
+				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", label, bits))
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+				v.Generator.AddInstruction("ldr d0, [x1]")
+			}
 
-            // Llamar a la función de conversión y luego imprimir
-            v.Generator.AddLdr("x1", "buffer")        // buffer
-            v.Generator.AddBl("float_to_ascii")       // x0 ← length, x1 se mueve internamente
-            v.Generator.AddInstruction("mov x2, x0")  // x2 = length
-            v.Generator.AddLdr("x1", "buffer")        // ❗️RELOAD x1 to buffer
-            v.Generator.AddInstruction("mov x0, #1")  // stdout
-            v.Generator.AddInstruction("mov w8, #64") // syscall write
-            v.Generator.AddInstruction("svc #0")
+			// Llamar a la función de conversión y luego imprimir
+			v.Generator.AddLdr("x1", "buffer")        // buffer
+			v.Generator.AddBl("float_to_ascii")       // x0 ← length, x1 se mueve internamente
+			v.Generator.AddInstruction("mov x2, x0")  // x2 = length
+			v.Generator.AddLdr("x1", "buffer")        // ❗️RELOAD x1 to buffer
+			v.Generator.AddInstruction("mov x0, #1")  // stdout
+			v.Generator.AddInstruction("mov w8, #64") // syscall write
+			v.Generator.AddInstruction("svc #0")
 
 		case "bool", "booleano":
 			v.UsesBoolToAscii = true
@@ -309,7 +327,13 @@ func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) inte
 }
 
 func (v *ARMVisitor) VisitId(ctx *parser.IdContext) interface{} {
-	return ctx.GetText()
+	id := ctx.GetText()
+	if entry, exists := v.VarMap[id]; exists {
+		return PrintValue{Tipo: entry.Tipo, Valor: entry.Valor}
+	}
+	// Si no existe, devolver como string para evitar crash, pero advertir
+	fmt.Printf("⚠️  Variable no encontrada: %s\n", id)
+	return id
 }
 
 func (v *ARMVisitor) VisitValorexpr(ctx *parser.ValorexprContext) interface{} {
@@ -329,7 +353,7 @@ func (v *ARMVisitor) VisitValorCadena(ctx *parser.ValorCadenaContext) interface{
 	if len(text) >= 2 && text[0] == '"' && text[len(text)-1] == '"' {
 		text = text[1 : len(text)-1]
 	}
-	return PrintValue{Tipo: "cadena", Valor: text}
+	return PrintValue{Tipo: "string", Valor: text}
 }
 
 func (v *ARMVisitor) VisitValorBooleano(ctx *parser.ValorBooleanoContext) interface{} {
@@ -604,7 +628,7 @@ func (v *ARMVisitor) VisitVariableDeclarationImmutable(ctx *parser.VariableDecla
 			fmt.Println("DEBUG: Declaración nueva para:", id)
 
 			label := id
-			v.VarMap[id] = VariableEntry{Tipo: normalizeTipo(tipo), Valor: pv.Valor, Label: label}
+			v.VarMap[id] = VariableEntry{Tipo: tipo, Valor: pv.Valor, Label: label}
 
 			switch tipo {
 			case "int":
@@ -623,13 +647,17 @@ func (v *ARMVisitor) VisitVariableDeclarationImmutable(ctx *parser.VariableDecla
 				tempLabel := v.Generator.GenerateUniqueLabel("float_temp")
 				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", tempLabel, floatBits))
 				v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", tempLabel))
-				v.Generator.AddInstruction("ldr d0, [x0]") // ✅ CORREGIDO
+				v.Generator.AddInstruction("ldr d0, [x0]")
 				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
-				v.Generator.AddInstruction("str d0, [x1]") // ✅ CORREGIDO
+				v.Generator.AddInstruction("str d0, [x1]")
 
-			case "string", "rune":
-				v.Generator.AddData(fmt.Sprintf("%s: .ascii \"%s\"", label, pv.Valor))
+			case "string":
+				v.Generator.AddData(fmt.Sprintf("%s: .asciz \"%s\"", label, pv.Valor))
 				v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - %s", label, label))
+
+			case "rune":
+				v.Generator.AddData(fmt.Sprintf("%s: .byte %d", label, toRune(pv.Valor)))
+				v.Generator.AddData(fmt.Sprintf("len_%s: .quad 1", label))
 			}
 		}
 	}
@@ -637,308 +665,502 @@ func (v *ARMVisitor) VisitVariableDeclarationImmutable(ctx *parser.VariableDecla
 }
 
 func (v *ARMVisitor) VisitRelacionales(ctx *parser.RelacionalesContext) interface{} {
-    left := v.Visit(ctx.Expresion(0)).(PrintValue)
-    right := v.Visit(ctx.Expresion(1)).(PrintValue)
-    op := ctx.GetOp().GetText() // ">", "<", etc.
-    
+	left := v.Visit(ctx.Expresion(0)).(PrintValue)
+	right := v.Visit(ctx.Expresion(1)).(PrintValue)
+	op := ctx.GetOp().GetText() // ">", "<", etc.
+
 	tipoLeft := normalizeTipo(left.Tipo)
-    tipoRight := normalizeTipo(right.Tipo)
-    if tipoLeft == "int" && tipoRight == "int" {
-        v.Generator.AddMov("x0", left.Valor)
-        v.Generator.AddMov("x1", right.Valor)
-        v.Generator.AddInstruction("cmp x0, x1")
+	tipoRight := normalizeTipo(right.Tipo)
+	if tipoLeft == "int" && tipoRight == "int" {
+		v.Generator.AddMov("x0", left.Valor)
+		v.Generator.AddMov("x1", right.Valor)
+		v.Generator.AddInstruction("cmp x0, x1")
 
-        labelTrue := v.Generator.GenerateUniqueLabel("cmp_true")
-        labelEnd := v.Generator.GenerateUniqueLabel("cmp_end")
+		labelTrue := v.Generator.GenerateUniqueLabel("cmp_true")
+		labelEnd := v.Generator.GenerateUniqueLabel("cmp_end")
 
-        v.Generator.AddMov("x2", "#0") // Por defecto: false
+		v.Generator.AddMov("x2", "#0") // Por defecto: false
 
-        switch op {
-        case ">":
-            v.Generator.AddInstruction(fmt.Sprintf("bgt %s", labelTrue))
-        case "<":
-            v.Generator.AddInstruction(fmt.Sprintf("blt %s", labelTrue))
-        case ">=":
-            v.Generator.AddInstruction(fmt.Sprintf("bge %s", labelTrue))
-        case "<=":
-            v.Generator.AddInstruction(fmt.Sprintf("ble %s", labelTrue))
-        }
+		switch op {
+		case ">":
+			v.Generator.AddInstruction(fmt.Sprintf("bgt %s", labelTrue))
+		case "<":
+			v.Generator.AddInstruction(fmt.Sprintf("blt %s", labelTrue))
+		case ">=":
+			v.Generator.AddInstruction(fmt.Sprintf("bge %s", labelTrue))
+		case "<=":
+			v.Generator.AddInstruction(fmt.Sprintf("ble %s", labelTrue))
+		}
 
-        v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
-        v.Generator.setLabel(labelTrue)
-        v.Generator.AddMov("x2", "#1") // true
-        v.Generator.setLabel(labelEnd)
+		v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
+		v.Generator.setLabel(labelTrue)
+		v.Generator.AddMov("x2", "#1") // true
+		v.Generator.setLabel(labelEnd)
 
-        return PrintValue{Tipo: "bool", Valor: "x2"}
-    }
+		return PrintValue{Tipo: "bool", Valor: "x2"}
+	}
 
 	if (tipoLeft == "float64" && tipoRight == "float64") ||
-       (tipoLeft == "int" && tipoRight == "float64") ||
-       (tipoLeft == "float64" && tipoRight == "int") {
+		(tipoLeft == "int" && tipoRight == "float64") ||
+		(tipoLeft == "float64" && tipoRight == "int") {
 
-        // Convierte ambos a float64
-        var leftVal, rightVal float64
-        leftVal = toFloat(left.Valor)
-        rightVal = toFloat(right.Valor)
+		// Convierte ambos a float64
+		var leftVal, rightVal float64
+		leftVal = toFloat(left.Valor)
+		rightVal = toFloat(right.Valor)
 
-        // Carga leftVal en d0
-        v.PrintCount++
-        labelLeft := fmt.Sprintf("cmp_float_left_%d", v.PrintCount)
-        bitsLeft := math.Float64bits(leftVal)
-        v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", labelLeft, bitsLeft))
-        v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", labelLeft))
-        v.Generator.AddInstruction("ldr d0, [x0]")
+		// Carga leftVal en d0
+		v.PrintCount++
+		labelLeft := fmt.Sprintf("cmp_float_left_%d", v.PrintCount)
+		bitsLeft := math.Float64bits(leftVal)
+		v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", labelLeft, bitsLeft))
+		v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", labelLeft))
+		v.Generator.AddInstruction("ldr d0, [x0]")
 
-        // Carga rightVal en d1
-        v.PrintCount++
-        labelRight := fmt.Sprintf("cmp_float_right_%d", v.PrintCount)
-        bitsRight := math.Float64bits(rightVal)
-        v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", labelRight, bitsRight))
-        v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", labelRight))
-        v.Generator.AddInstruction("ldr d1, [x1]")
+		// Carga rightVal en d1
+		v.PrintCount++
+		labelRight := fmt.Sprintf("cmp_float_right_%d", v.PrintCount)
+		bitsRight := math.Float64bits(rightVal)
+		v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", labelRight, bitsRight))
+		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", labelRight))
+		v.Generator.AddInstruction("ldr d1, [x1]")
 
-        // Compara d0 y d1
-        v.Generator.AddInstruction("fcmp d0, d1")
+		// Compara d0 y d1
+		v.Generator.AddInstruction("fcmp d0, d1")
 
-        labelTrue := v.Generator.GenerateUniqueLabel("cmp_true")
-        labelEnd := v.Generator.GenerateUniqueLabel("cmp_end")
+		labelTrue := v.Generator.GenerateUniqueLabel("cmp_true")
+		labelEnd := v.Generator.GenerateUniqueLabel("cmp_end")
 
-        v.Generator.AddMov("x2", "#0") // Por defecto: false
+		v.Generator.AddMov("x2", "#0") // Por defecto: false
 
-        switch op {
-        case ">":
-            v.Generator.AddInstruction(fmt.Sprintf("bgt %s", labelTrue))
-        case "<":
-            v.Generator.AddInstruction(fmt.Sprintf("blt %s", labelTrue))
-        case ">=":
-            v.Generator.AddInstruction(fmt.Sprintf("bge %s", labelTrue))
-        case "<=":
-            v.Generator.AddInstruction(fmt.Sprintf("ble %s", labelTrue))
-        }
+		switch op {
+		case ">":
+			v.Generator.AddInstruction(fmt.Sprintf("bgt %s", labelTrue))
+		case "<":
+			v.Generator.AddInstruction(fmt.Sprintf("blt %s", labelTrue))
+		case ">=":
+			v.Generator.AddInstruction(fmt.Sprintf("bge %s", labelTrue))
+		case "<=":
+			v.Generator.AddInstruction(fmt.Sprintf("ble %s", labelTrue))
+		}
 
-        v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
-        v.Generator.setLabel(labelTrue)
-        v.Generator.AddMov("x2", "#1") // true
-        v.Generator.setLabel(labelEnd)
+		v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
+		v.Generator.setLabel(labelTrue)
+		v.Generator.AddMov("x2", "#1") // true
+		v.Generator.setLabel(labelEnd)
 
-        return PrintValue{Tipo: "bool", Valor: "x2"}
-    }
+		return PrintValue{Tipo: "bool", Valor: "x2"}
+	}
 
-    // Si no es comparación de enteros, retorna false para evitar nil
-    return PrintValue{Tipo: "bool", Valor: "false"}
+	// Si no es comparación de enteros, retorna false para evitar nil
+	return PrintValue{Tipo: "bool", Valor: "false"}
 }
 
 func (v *ARMVisitor) VisitIgualdad(ctx *parser.IgualdadContext) interface{} {
-    left := v.Visit(ctx.Expresion(0)).(PrintValue)
-    right := v.Visit(ctx.Expresion(1)).(PrintValue)
-    op := ctx.GetOp().GetText() // "==" o "!="
+	left := v.Visit(ctx.Expresion(0)).(PrintValue)
+	right := v.Visit(ctx.Expresion(1)).(PrintValue)
+	op := ctx.GetOp().GetText() // "==" o "!="
 
-    tipoLeft := normalizeTipo(left.Tipo)
-    tipoRight := normalizeTipo(right.Tipo)
+	tipoLeft := normalizeTipo(left.Tipo)
+	tipoRight := normalizeTipo(right.Tipo)
 
-    // --- Comparación int vs int ---
-    if tipoLeft == "int" && tipoRight == "int" {
-        v.Generator.AddMov("x0", left.Valor)
-        v.Generator.AddMov("x1", right.Valor)
-        v.Generator.AddInstruction("cmp x0, x1")
+	// --- Comparación int vs int ---
+	if tipoLeft == "int" && tipoRight == "int" {
+		v.Generator.AddMov("x0", left.Valor)
+		v.Generator.AddMov("x1", right.Valor)
+		v.Generator.AddInstruction("cmp x0, x1")
 
-        labelTrue := v.Generator.GenerateUniqueLabel("cmp_eq_true")
-        labelEnd := v.Generator.GenerateUniqueLabel("cmp_eq_end")
+		labelTrue := v.Generator.GenerateUniqueLabel("cmp_eq_true")
+		labelEnd := v.Generator.GenerateUniqueLabel("cmp_eq_end")
 
-        v.Generator.AddMov("x2", "#0") // Por defecto: false
+		v.Generator.AddMov("x2", "#0") // Por defecto: false
 
-        switch op {
-        case "==":
-            v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelTrue))
-        case "!=":
-            v.Generator.AddInstruction(fmt.Sprintf("bne %s", labelTrue))
-        }
+		switch op {
+		case "==":
+			v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelTrue))
+		case "!=":
+			v.Generator.AddInstruction(fmt.Sprintf("bne %s", labelTrue))
+		}
 
-        v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
-        v.Generator.setLabel(labelTrue)
-        v.Generator.AddMov("x2", "#1") // true
-        v.Generator.setLabel(labelEnd)
+		v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
+		v.Generator.setLabel(labelTrue)
+		v.Generator.AddMov("x2", "#1") // true
+		v.Generator.setLabel(labelEnd)
 
-        return PrintValue{Tipo: "bool", Valor: "x2"}
-    }
+		return PrintValue{Tipo: "bool", Valor: "x2"}
+	}
 
-    // --- Comparación float64/int/float64 ---
-    if (tipoLeft == "float64" && tipoRight == "float64") ||
-        (tipoLeft == "int" && tipoRight == "float64") ||
-        (tipoLeft == "float64" && tipoRight == "int") {
+	// --- Comparación float64/int/float64 ---
+	if (tipoLeft == "float64" && tipoRight == "float64") ||
+		(tipoLeft == "int" && tipoRight == "float64") ||
+		(tipoLeft == "float64" && tipoRight == "int") {
 
-        // Convierte ambos a float64
-        var leftVal, rightVal float64
-        leftVal = toFloat(left.Valor)
-        rightVal = toFloat(right.Valor)
+		// Convierte ambos a float64
+		var leftVal, rightVal float64
+		leftVal = toFloat(left.Valor)
+		rightVal = toFloat(right.Valor)
 
-        // Carga leftVal en d0
-        v.PrintCount++
-        labelLeft := fmt.Sprintf("cmp_eq_float_left_%d", v.PrintCount)
-        bitsLeft := math.Float64bits(leftVal)
-        v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", labelLeft, bitsLeft))
-        v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", labelLeft))
-        v.Generator.AddInstruction("ldr d0, [x0]")
+		// Carga leftVal en d0
+		v.PrintCount++
+		labelLeft := fmt.Sprintf("cmp_eq_float_left_%d", v.PrintCount)
+		bitsLeft := math.Float64bits(leftVal)
+		v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", labelLeft, bitsLeft))
+		v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", labelLeft))
+		v.Generator.AddInstruction("ldr d0, [x0]")
 
-        // Carga rightVal en d1
-        v.PrintCount++
-        labelRight := fmt.Sprintf("cmp_eq_float_right_%d", v.PrintCount)
-        bitsRight := math.Float64bits(rightVal)
-        v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", labelRight, bitsRight))
-        v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", labelRight))
-        v.Generator.AddInstruction("ldr d1, [x1]")
+		// Carga rightVal en d1
+		v.PrintCount++
+		labelRight := fmt.Sprintf("cmp_eq_float_right_%d", v.PrintCount)
+		bitsRight := math.Float64bits(rightVal)
+		v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", labelRight, bitsRight))
+		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", labelRight))
+		v.Generator.AddInstruction("ldr d1, [x1]")
 
-        // Compara d0 y d1
-        v.Generator.AddInstruction("fcmp d0, d1")
+		// Compara d0 y d1
+		v.Generator.AddInstruction("fcmp d0, d1")
 
-        labelTrue := v.Generator.GenerateUniqueLabel("cmp_eq_true")
-        labelEnd := v.Generator.GenerateUniqueLabel("cmp_eq_end")
+		labelTrue := v.Generator.GenerateUniqueLabel("cmp_eq_true")
+		labelEnd := v.Generator.GenerateUniqueLabel("cmp_eq_end")
 
-        v.Generator.AddMov("x2", "#0") // Por defecto: false
+		v.Generator.AddMov("x2", "#0") // Por defecto: false
 
-        switch op {
-        case "==":
-            v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelTrue))
-        case "!=":
-            v.Generator.AddInstruction(fmt.Sprintf("bne %s", labelTrue))
-        }
+		switch op {
+		case "==":
+			v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelTrue))
+		case "!=":
+			v.Generator.AddInstruction(fmt.Sprintf("bne %s", labelTrue))
+		}
 
-        v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
-        v.Generator.setLabel(labelTrue)
-        v.Generator.AddMov("x2", "#1") // true
-        v.Generator.setLabel(labelEnd)
+		v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
+		v.Generator.setLabel(labelTrue)
+		v.Generator.AddMov("x2", "#1") // true
+		v.Generator.setLabel(labelEnd)
 
-        return PrintValue{Tipo: "bool", Valor: "x2"}
-    }
+		return PrintValue{Tipo: "bool", Valor: "x2"}
+	}
 	if tipoLeft == "string" && tipoRight == "string" {
-           var result bool
-           switch op {
-           case "==":
-               result = left.Valor == right.Valor
-           case "!=":
-               result = left.Valor != right.Valor
-           }
-           if result {
-               return PrintValue{Tipo: "bool", Valor: "true"}
-           }
-           return PrintValue{Tipo: "bool", Valor: "false"}
-    }
+		var result bool
+		switch op {
+		case "==":
+			result = left.Valor == right.Valor
+		case "!=":
+			result = left.Valor != right.Valor
+		}
+		if result {
+			return PrintValue{Tipo: "bool", Valor: "true"}
+		}
+		return PrintValue{Tipo: "bool", Valor: "false"}
+	}
 
-    // Si no es comparación válida, retorna false
-    return PrintValue{Tipo: "bool", Valor: "false"}
+	// Si no es comparación válida, retorna false
+	return PrintValue{Tipo: "bool", Valor: "false"}
 }
 
 func (v *ARMVisitor) VisitOPERADORESLOGICOS(ctx *parser.OPERADORESLOGICOSContext) interface{} {
-    left := v.Visit(ctx.Expresion(0)).(PrintValue)
-    right := v.Visit(ctx.Expresion(1)).(PrintValue)
-    op := ctx.GetOp().GetText() // "&&" o "||"
+	left := v.Visit(ctx.Expresion(0)).(PrintValue)
+	right := v.Visit(ctx.Expresion(1)).(PrintValue)
+	op := ctx.GetOp().GetText() // "&&" o "||"
 
-    tipoLeft := normalizeTipo(left.Tipo)
-    tipoRight := normalizeTipo(right.Tipo)
+	tipoLeft := normalizeTipo(left.Tipo)
+	tipoRight := normalizeTipo(right.Tipo)
 
-    // Solo booleanos
-    if tipoLeft == "bool" && tipoRight == "bool" {
-        labelTrue := v.Generator.GenerateUniqueLabel("logic_true")
-        labelEnd := v.Generator.GenerateUniqueLabel("logic_end")
+	// Solo booleanos
+	if tipoLeft == "bool" && tipoRight == "bool" {
+		labelTrue := v.Generator.GenerateUniqueLabel("logic_true")
+		labelEnd := v.Generator.GenerateUniqueLabel("logic_end")
 
 		switch left.Valor {
+		case "x2":
+			v.Generator.AddInstruction("mov x0, x2")
+		case "true":
+			v.Generator.AddMov("x0", "#1")
+		case "false":
+			v.Generator.AddMov("x0", "#0")
+		default:
+			v.Generator.AddMov("x0", left.Valor)
+		}
+
+		switch right.Valor {
+		case "x2":
+			v.Generator.AddInstruction("mov x1, x2")
+		case "true":
+			v.Generator.AddMov("x1", "#1")
+		case "false":
+			v.Generator.AddMov("x1", "#0")
+		default:
+			v.Generator.AddMov("x1", right.Valor)
+		}
+
+		switch op {
+		case "&&":
+			// x2 = (x0 != 0) && (x1 != 0)
+			v.Generator.AddMov("x2", "#0")
+			v.Generator.AddInstruction("cmp x0, #0")
+			v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelEnd))
+			v.Generator.AddInstruction("cmp x1, #0")
+			v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelEnd))
+			v.Generator.AddMov("x2", "#1")
+			v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
+		case "||":
+			// x2 = (x0 != 0) || (x1 != 0)
+			v.Generator.AddMov("x2", "#1")
+			v.Generator.AddInstruction("cmp x0, #0")
+			v.Generator.AddInstruction(fmt.Sprintf("bne %s", labelTrue))
+			v.Generator.AddInstruction("cmp x1, #0")
+			v.Generator.AddInstruction(fmt.Sprintf("bne %s", labelTrue))
+			v.Generator.AddMov("x2", "#0")
+			v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
+			v.Generator.setLabel(labelTrue)
+			v.Generator.AddMov("x2", "#1")
+		}
+		v.Generator.setLabel(labelEnd)
+		return PrintValue{Tipo: "bool", Valor: "x2"}
+	}
+
+	// Si no son booleanos, retorna false
+	return PrintValue{Tipo: "bool", Valor: "false"}
+}
+
+func (v *ARMVisitor) VisitUnario(ctx *parser.UnarioContext) interface{} {
+	val := v.Visit(ctx.Expresion()).(PrintValue)
+	op := ctx.GetOp().GetText()
+
+	switch op {
+	case "!":
+		// Negación lógica: solo para booleanos
+		tipo := normalizeTipo(val.Tipo)
+		if tipo == "bool" {
+			switch val.Valor {
 			case "x2":
+				// El valor está en x2 (resultado de una comparación)
 				v.Generator.AddInstruction("mov x0, x2")
 			case "true":
 				v.Generator.AddMov("x0", "#1")
 			case "false":
 				v.Generator.AddMov("x0", "#0")
 			default:
-				v.Generator.AddMov("x0", left.Valor)
+				v.Generator.AddMov("x0", val.Valor)
+			}
+			// NOT lógico: x2 = (x0 == 0) ? 1 : 0
+			labelTrue := v.Generator.GenerateUniqueLabel("not_true")
+			labelEnd := v.Generator.GenerateUniqueLabel("not_end")
+			v.Generator.AddMov("x2", "#0")
+			v.Generator.AddInstruction("cmp x0, #0")
+			v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelTrue))
+			v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
+			v.Generator.setLabel(labelTrue)
+			v.Generator.AddMov("x2", "#1")
+			v.Generator.setLabel(labelEnd)
+			return PrintValue{Tipo: "bool", Valor: "x2"}
 		}
+		// Si no es booleano, retorna false
+		return PrintValue{Tipo: "bool", Valor: "false"}
 
-		switch right.Valor {
-			case "x2":
-				v.Generator.AddInstruction("mov x1, x2")
-			case "true":
-				v.Generator.AddMov("x1", "#1")
-			case "false":
-				v.Generator.AddMov("x1", "#0")
-			default:
-				v.Generator.AddMov("x1", right.Valor)
+	case "-":
+		// Negación aritmética: para enteros y decimales
+		tipo := normalizeTipo(val.Tipo)
+		if tipo == "int" || tipo == "entero" {
+			return PrintValue{Tipo: "int", Valor: fmt.Sprintf("%d", -toInt(val.Valor))}
 		}
+		if tipo == "float64" || tipo == "decimal" {
+			return PrintValue{Tipo: "float64", Valor: formatNumber(-toFloat(val.Valor))}
+		}
+	}
 
-        switch op {
-        case "&&":
-            // x2 = (x0 != 0) && (x1 != 0)
-            v.Generator.AddMov("x2", "#0")
-            v.Generator.AddInstruction("cmp x0, #0")
-            v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelEnd))
-            v.Generator.AddInstruction("cmp x1, #0")
-            v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelEnd))
-            v.Generator.AddMov("x2", "#1")
-            v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
-        case "||":
-            // x2 = (x0 != 0) || (x1 != 0)
-            v.Generator.AddMov("x2", "#1")
-            v.Generator.AddInstruction("cmp x0, #0")
-            v.Generator.AddInstruction(fmt.Sprintf("bne %s", labelTrue))
-            v.Generator.AddInstruction("cmp x1, #0")
-            v.Generator.AddInstruction(fmt.Sprintf("bne %s", labelTrue))
-            v.Generator.AddMov("x2", "#0")
-            v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
-            v.Generator.setLabel(labelTrue)
-            v.Generator.AddMov("x2", "#1")
-        }
-        v.Generator.setLabel(labelEnd)
-        return PrintValue{Tipo: "bool", Valor: "x2"}
-    }
-
-    // Si no son booleanos, retorna false
-    return PrintValue{Tipo: "bool", Valor: "false"}
+	// Si no es un caso soportado, retorna el valor original
+	return val
 }
 
-func (v *ARMVisitor) VisitUnario(ctx *parser.UnarioContext) interface{} {
-    val := v.Visit(ctx.Expresion()).(PrintValue)
-    op := ctx.GetOp().GetText()
+func (v *ARMVisitor) VisitControlStatement(ctx *parser.ControlStatementContext) interface{} {
+	return v.Visit(ctx.Sentencias_control())
+}
 
-    switch op {
-    case "!":
-        // Negación lógica: solo para booleanos
-        tipo := normalizeTipo(val.Tipo)
-        if tipo == "bool" {
-            switch val.Valor {
-            case "x2":
-                // El valor está en x2 (resultado de una comparación)
-                v.Generator.AddInstruction("mov x0, x2")
-            case "true":
-                v.Generator.AddMov("x0", "#1")
-            case "false":
-                v.Generator.AddMov("x0", "#0")
-            default:
-                v.Generator.AddMov("x0", val.Valor)
-            }
-            // NOT lógico: x2 = (x0 == 0) ? 1 : 0
-            labelTrue := v.Generator.GenerateUniqueLabel("not_true")
-            labelEnd := v.Generator.GenerateUniqueLabel("not_end")
-            v.Generator.AddMov("x2", "#0")
-            v.Generator.AddInstruction("cmp x0, #0")
-            v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelTrue))
-            v.Generator.AddInstruction(fmt.Sprintf("b %s", labelEnd))
-            v.Generator.setLabel(labelTrue)
-            v.Generator.AddMov("x2", "#1")
-            v.Generator.setLabel(labelEnd)
-            return PrintValue{Tipo: "bool", Valor: "x2"}
-        }
-        // Si no es booleano, retorna false
-        return PrintValue{Tipo: "bool", Valor: "false"}
+func (v *ARMVisitor) VisitIf_context(ctx *parser.If_contextContext) interface{} {
+	return v.Visit(ctx.IfDcl())
+}
 
-    case "-":
-        // Negación aritmética: para enteros y decimales
-        tipo := normalizeTipo(val.Tipo)
-        if tipo == "int" || tipo == "entero" {
-            return PrintValue{Tipo: "int", Valor: fmt.Sprintf("%d", -toInt(val.Valor))}
-        }
-        if tipo == "float64" || tipo == "decimal" {
-            return PrintValue{Tipo: "float64", Valor: formatNumber(-toFloat(val.Valor))}
-        }
-    }
+func (v *ARMVisitor) VisitIfDcl(ctx *parser.IfDclContext) interface{} {
+	fmt.Println("Entrando a VisitIfDcl con condición:", ctx.Expresion().GetText())
+	endLabel := v.Generator.GenerateUniqueLabel("ifend")
+	elseIfLabels := []string{}
 
-    // Si no es un caso soportado, retorna el valor original
-    return val
+	// Generar etiquetas para cada else if y else
+	for range ctx.AllElseIfDcl() {
+		elseIfLabels = append(elseIfLabels, v.Generator.GenerateUniqueLabel("elseif"))
+	}
+	if ctx.ElseCondicional() != nil {
+		elseIfLabels = append(elseIfLabels, v.Generator.GenerateUniqueLabel("else"))
+	}
+
+	// --- IF PRINCIPAL ---
+	val := v.Visit(ctx.Expresion()).(PrintValue)
+	falseLabel := ""
+	if len(elseIfLabels) > 0 {
+		falseLabel = elseIfLabels[0]
+	} else {
+		falseLabel = endLabel
+	}
+	v.prepareCondBranch(val, falseLabel)
+
+	for _, decl := range ctx.AllDeclaraciones() {
+		v.Visit(decl)
+	}
+	v.Generator.B(endLabel)
+
+	// --- ELSE IFs ---
+	for i, elseIf := range ctx.AllElseIfDcl() {
+		v.Generator.setLabel(elseIfLabels[i])
+		val := v.Visit(elseIf.Expresion()).(PrintValue)
+
+		nextLabel := ""
+		if i+1 < len(elseIfLabels) {
+			nextLabel = elseIfLabels[i+1]
+		} else {
+			nextLabel = endLabel
+		}
+		v.prepareCondBranch(val, nextLabel)
+
+		for _, decl := range elseIf.AllDeclaraciones() {
+			v.Visit(decl)
+		}
+		v.Generator.B(endLabel)
+	}
+
+	// --- ELSE FINAL ---
+	if ctx.ElseCondicional() != nil {
+		v.Generator.setLabel(elseIfLabels[len(elseIfLabels)-1])
+		for _, decl := range ctx.ElseCondicional().AllDeclaraciones() {
+			v.Visit(decl)
+		}
+	}
+
+	v.Generator.setLabel(endLabel)
+	return nil
+}
+
+func (v *ARMVisitor) prepareCondBranch(val PrintValue, labelFalse string) {
+	switch val.Valor {
+	case "x2":
+		v.Generator.AddInstruction("cmp x2, #0")
+		v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelFalse))
+	case "true":
+		// no branch, continúa
+	case "false":
+		v.Generator.AddInstruction(fmt.Sprintf("b %s", labelFalse))
+	default:
+		v.Generator.AddMov("x0", val.Valor)
+		v.Generator.AddInstruction("cmp x0, #0")
+		v.Generator.AddInstruction(fmt.Sprintf("beq %s", labelFalse))
+	}
+}
+
+func (v *ARMVisitor) VisitSwitch_context(ctx *parser.Switch_contextContext) interface{} {
+	return v.Visit(ctx.SwitchDcl())
+}
+
+func (v *ARMVisitor) VisitSwitchDcl(ctx *parser.SwitchDclContext) interface{} {
+	switchExpr := v.Visit(ctx.Expresion())
+
+	pv, ok := switchExpr.(PrintValue)
+	if !ok {
+		fmt.Println("ERROR: expresión de switch no válida")
+		return nil
+	}
+
+	v.Generator.AddStringCompareFunction() // Asegura strcmp una vez
+
+	endLabel := v.Generator.GenerateUniqueLabel("switch_end")
+	caseLabels := make([]string, len(ctx.AllCaseBlock()))
+	defaultLabel := ""
+
+	for i := range ctx.AllCaseBlock() {
+		caseLabels[i] = v.Generator.GenerateUniqueLabel(fmt.Sprintf("case_%d", i))
+	}
+
+	if ctx.DefaultBlock() != nil {
+		defaultLabel = v.Generator.GenerateUniqueLabel("switch_default")
+	}
+
+	// === Evaluar expresión del switch (poner en x0) ===
+	var switchLabel string
+	if pv.Tipo == "string" {
+		varName := ctx.Expresion().GetText()
+		entry, exists := v.VarMap[varName]
+
+		if exists {
+			switchLabel = entry.Label
+			v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", switchLabel))
+		} else {
+			// Literal directa
+			v.PrintCount++
+			switchLabel = fmt.Sprintf("switch_expr_str_%d", v.PrintCount)
+			v.Generator.AddData(fmt.Sprintf("%s: .asciz \"%s\"", switchLabel, pv.Valor))
+			v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", switchLabel))
+		}
+	} else if pv.Tipo == "int" || pv.Tipo == "bool" {
+		v.Generator.AddMov("x0", pv.Valor)
+	} else {
+		fmt.Println("ERROR: tipo de switch no soportado:", pv.Tipo)
+		return nil
+	}
+
+	// === Comparaciones para cada case ===
+	for i, caseBlock := range ctx.AllCaseBlock() {
+		caseExpr := v.Visit(caseBlock.Expresion())
+		casePv := caseExpr.(PrintValue)
+
+		if pv.Tipo == "string" && casePv.Tipo == "string" {
+			v.PrintCount++
+			label := fmt.Sprintf("switch_case_str_%d", v.PrintCount)
+			v.Generator.AddData(fmt.Sprintf("%s: .asciz \"%s\"", label, casePv.Valor))
+			// Re-cargar x0 = valor original del switch
+			v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", switchLabel))
+			v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+			v.Generator.AddBl("strcmp")
+			v.Generator.AddInstruction("cmp x0, #0")
+			v.Generator.AddInstruction(fmt.Sprintf("beq %s", caseLabels[i]))
+
+		} else if pv.Tipo == "int" && casePv.Tipo == "int" {
+			v.Generator.AddMov("x1", casePv.Valor)
+			v.Generator.AddInstruction("cmp x0, x1")
+			v.Generator.AddInstruction(fmt.Sprintf("beq %s", caseLabels[i]))
+		} else if pv.Tipo == "bool" && casePv.Tipo == "bool" {
+			val := 0
+			if casePv.Valor == "true" {
+				val = 1
+			}
+			v.Generator.AddMov("x1", fmt.Sprintf("#%d", val))
+			v.Generator.AddInstruction("cmp x0, x1")
+			v.Generator.AddInstruction(fmt.Sprintf("beq %s", caseLabels[i]))
+		} else {
+			fmt.Printf("WARN: tipo no compatible en switch/case: %s vs %s\n", pv.Tipo, casePv.Tipo)
+		}
+	}
+
+	// === Si ningún case coincidió, salta al default o al final ===
+	if defaultLabel != "" {
+		v.Generator.B(defaultLabel)
+	} else {
+		v.Generator.B(endLabel)
+	}
+
+	// === Cuerpos de los case ===
+	for i, caseBlock := range ctx.AllCaseBlock() {
+		v.Generator.setLabel(caseLabels[i])
+		for _, decl := range caseBlock.AllDeclaraciones() {
+			v.Visit(decl)
+		}
+		v.Generator.B(endLabel)
+	}
+
+	// === Cuerpo del default ===
+	if ctx.DefaultBlock() != nil {
+		v.Generator.setLabel(defaultLabel)
+		for _, decl := range ctx.DefaultBlock().AllDeclaraciones() {
+			v.Visit(decl)
+		}
+	}
+
+	v.Generator.setLabel(endLabel)
+	return nil
 }
