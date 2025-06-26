@@ -196,30 +196,31 @@ func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) inte
 		switch pv.Tipo {
 		case "int", "entero":
 			v.UsesIntToAscii = true
-			intVal := toInt(pv.Valor)
-			if intVal < 0 {
-				// Escribe '-' en buffer
-				v.Generator.AddLdr("x1", "buffer")
-				v.Generator.AddMov("w3", "#45") // ASCII '-'
-				v.Generator.AddInstruction("strb w3, [x1], #1")
-				v.Generator.AddMov("x0", fmt.Sprintf("#%d", -intVal))
-				v.Generator.AddBl("int_to_ascii")
-				// Ajusta para imprimir el '-' más los dígitos
-				v.Generator.AddInstruction("add x2, x0, #1") // x0 = longitud de dígitos, +1 por el '-'
-				v.Generator.AddLdr("x1", "buffer")
-				v.Generator.AddInstruction("mov x0, #1")
-				v.Generator.AddInstruction("mov w8, #64")
-				v.Generator.AddInstruction("svc #0")
-			} else {
-				v.Generator.AddMov("x0", fmt.Sprintf("#%d", intVal))
-				v.Generator.AddLdr("x1", "buffer")
-				v.Generator.AddBl("int_to_ascii")
-				v.Generator.AddInstruction("mov x2, x0")
-				v.Generator.AddInstruction("mov x1, x1")
-				v.Generator.AddInstruction("mov x0, #1")
-				v.Generator.AddInstruction("mov w8, #64")
-				v.Generator.AddInstruction("svc #0")
+
+			// ── ① Colocar el entero a imprimir en X0 ───────────────────────────────
+			_, err := strconv.Atoi(pv.Valor)
+			switch {
+			case pv.Valor == "x0":
+				// El valor ya está en x0, no hacemos nada
+			case pv.Valor == "x2":
+				v.Generator.AddInstruction("mov x0, x2")
+			case err == nil:
+				// Literal → inmediato
+				v.Generator.AddMov("x0", fmt.Sprintf("#%s", pv.Valor))
+			default:
+				// Etiqueta de variable
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", pv.Valor))
+				v.Generator.AddInstruction("ldr x0, [x1]")
 			}
+
+			// ── ② Convertir a ASCII y escribir en stdout (syscall 64) ──────────────
+			v.Generator.AddLdr("x1", "buffer")        // x1 = &buffer
+			v.Generator.AddBl("int_to_ascii")         // x0 (len) = int_to_ascii(x0, x1)
+			v.Generator.AddInstruction("mov x2, x0")  // x2 = len
+			v.Generator.AddLdr("x1", "buffer")        // x1 = &buffer otra vez
+			v.Generator.AddInstruction("mov x0, #1")  // stdout
+			v.Generator.AddInstruction("mov w8, #64") // write
+			v.Generator.AddInstruction("svc #0")
 
 		case "float64", "decimal":
 			v.UsesFloatToAscii = true
@@ -328,12 +329,18 @@ func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) inte
 
 func (v *ARMVisitor) VisitId(ctx *parser.IdContext) interface{} {
 	id := ctx.GetText()
-	if entry, exists := v.VarMap[id]; exists {
-		return PrintValue{Tipo: entry.Tipo, Valor: entry.Valor}
+	if entry, ok := v.VarMap[id]; ok {
+		// Forzar que la comparación use el valor real desde memoria
+		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+		v.Generator.AddInstruction("ldr x0, [x1]")
+
+		return PrintValue{
+			Tipo:  entry.Tipo,
+			Valor: "x0", // ← IMPORTANTE: se compara usando el valor cargado a x0
+		}
 	}
-	// Si no existe, devolver como string para evitar crash, pero advertir
-	fmt.Printf("⚠️  Variable no encontrada: %s\n", id)
-	return id
+	fmt.Printf("⚠️ Variable no encontrada: %s\n", id)
+	return PrintValue{Tipo: "int", Valor: "0"}
 }
 
 func (v *ARMVisitor) VisitValorexpr(ctx *parser.ValorexprContext) interface{} {
@@ -375,18 +382,43 @@ func (v *ARMVisitor) VisitIMCPLICIT(ctx *parser.IMCPLICITContext) interface{} {
 		val := v.Visit(ctx.Expresion())
 
 		if pv, ok := val.(PrintValue); ok {
-			a := toFloat(entry.Valor)
-			b := toFloat(pv.Valor)
-			var result string
+			switch entry.Tipo {
+			case "int":
+				// X1 = &lhs ; X0 = lhs
+				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+				v.Generator.AddInstruction("ldr x0, [x1]")
 
-			switch op {
-			case "+=":
-				result = formatNumber(a + b)
-			case "-=":
-				result = formatNumber(a - b)
+				// ── RHS → X2 (inmediato, registro o variable) ──────────────────────────
+				rhs := pv.Valor
+				if _, err := strconv.Atoi(rhs); err == nil {
+					// inmediato
+					v.Generator.AddMov("x2", fmt.Sprintf("#%s", rhs))
+
+				} else if strings.HasPrefix(rhs, "x") { // registro (x0…x30)
+					v.Generator.AddInstruction(fmt.Sprintf("mov x2, %s", rhs))
+
+				} else {
+					// variable
+					v.Generator.AddInstruction(fmt.Sprintf("ldr x2, =%s", rhs))
+					v.Generator.AddInstruction("ldr x2, [x2]")
+				}
+
+				// ── Operación += o -= y guardar ────────────────────────────────────────
+				switch op {
+				case "+=":
+					v.Generator.AddInstruction("add x0, x0, x2")
+				case "-=":
+					v.Generator.AddInstruction("sub x0, x0, x2")
+				}
+				v.Generator.AddInstruction("str x0, [x1]")
+
+				// (opcional) Actualizar mapa
+				entry.Valor = "x0"
+				v.VarMap[id] = entry
+
+			default:
+				fmt.Printf("⚠️ Tipo %s no soportado aún en IMCPLICIT\n", entry.Tipo)
 			}
-
-			v.replaceVarData(id, result)
 		}
 	}
 	return nil
@@ -1175,88 +1207,174 @@ func (v *ARMVisitor) VisitContinueStatement(ctx *parser.ContinueStatementContext
 	return "continue"
 }
 
+// Ejecuta cualquier expresión que aparezca como statement, p. ej.  i += 1
+func (v *ARMVisitor) VisitExpresionStatement(ctx *parser.ExpresionStatementContext) interface{} {
+	return v.Visit(ctx.Expresion())
+}
+
+func (v *ARMVisitor) VisitFor_context(ctx *parser.For_contextContext) interface{} {
+	fmt.Println("[DEBUG] Entrando a VisitFor_context")
+	return v.Visit(ctx.ForDcl())
+}
+
 func (v *ARMVisitor) VisitForClasico(ctx *parser.ForClasicoContext) interface{} {
-	varName := ctx.Asignacion().ID().GetText()
+	fmt.Println("[DEBUG] Visitando For clásico")
 
-	// Obtener valor inicial
-	initVal := v.Visit(ctx.Asignacion().Expresion())
-	start := 0
-	if pv, ok := initVal.(PrintValue); ok && pv.Tipo == "entero" {
-		start = toInt(pv.Valor)
-	}
+	init := ctx.Asignacion()
+	cond := ctx.Expresion()
+	post := ctx.Stmt()
+	body := ctx.Block()
 
-	// Obtener condición final
-	condVal := v.Visit(ctx.Expresion())
-	end := 0
-	if pv, ok := condVal.(PrintValue); ok && pv.Tipo == "entero" {
-		end = toInt(pv.Valor)
+	// Inicialización del iterador
+	id := init.ID().GetText()
+	valor := v.Visit(init.Expresion())
+	if pv, ok := valor.(PrintValue); ok {
+		if _, exists := v.VarMap[id]; !exists {
+			v.VarMap[id] = VariableEntry{
+				Tipo:  "int",
+				Label: id,
+				Valor: pv.Valor,
+			}
+			v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0", id))
+		}
+		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", id))
+		v.Generator.AddMov("x0", pv.Valor)
+		v.Generator.AddInstruction("str x0, [x1]")
 	}
 
 	// Crear etiquetas
-	continueLabel := v.Generator.GenerateUniqueLabel("for_continue")
-	breakLabel := v.Generator.GenerateUniqueLabel("for_break")
+	labelStart := v.Generator.GenerateUniqueLabel("for_start")
+	labelEnd := v.Generator.GenerateUniqueLabel("for_end")
 
-	v.Generator.GenerateForLoop(varName, start, end+1, 1, func() {
-		for _, decl := range ctx.Block().AllDeclaraciones() {
-			val := v.Visit(decl)
-			if str, ok := val.(string); ok {
-				if str == "break" {
-					v.Generator.B(breakLabel)
-					break
-				}
-				if str == "continue" {
-					v.Generator.B(continueLabel)
-					break
-				}
-			}
-		}
+	// Etiqueta inicio del ciclo
+	v.Generator.setLabel(labelStart)
 
-		// Incremento separado, no aquí
-	}, continueLabel, breakLabel)
+	// Evaluar condición
+	valCond := v.Visit(cond).(PrintValue)
+	v.prepareCondBranch(valCond, labelEnd)
+
+	// Cuerpo del for
+	for _, decl := range body.AllDeclaraciones() {
+		v.Visit(decl)
+	}
+
+	// Incremento (stmt)
+	if post != nil {
+		v.Visit(post)
+	}
+
+	// Saltar al inicio
+	v.Generator.B(labelStart)
+
+	// Etiqueta fin del for
+	v.Generator.setLabel(labelEnd)
 
 	return nil
 }
 
-// funcion for que parece while CREO QUE SI JALA BIEN
+// Implementación para FOR tipo while: for condicion { cuerpo }
 func (v *ARMVisitor) VisitForCondicionUnica(ctx *parser.ForCondicionUnicaContext) interface{} {
+	fmt.Println("[DEBUG] Entrando a ForCondicionUnica")
+
+	startLabel := v.Generator.GenerateUniqueLabel("for_start")
 	condLabel := v.Generator.GenerateUniqueLabel("for_cond")
+	endLabel := v.Generator.GenerateUniqueLabel("for_end")
 	continueLabel := v.Generator.GenerateUniqueLabel("for_continue")
-	breakLabel := v.Generator.GenerateUniqueLabel("for_break")
 
-	// Etiqueta de inicio del ciclo
-	v.Generator.setLabel(condLabel)
+	// Saltar a evaluar la condición primero
+	v.Generator.B(condLabel)
 
-	// Evaluar la condición
-	val := v.Visit(ctx.Expresion())
-	// Aquí asume que la condición deja el resultado en X0 (0 = falso, distinto de 0 = verdadero)
-	// Si tu Visit devuelve PrintValue, adapta esto:
-	if pv, ok := val.(PrintValue); ok && pv.Tipo == "entero" {
-		v.Generator.Mov("X0", toInt(pv.Valor))
-	}
-	v.Generator.Cbz("X0", breakLabel)
+	// Etiqueta de inicio del cuerpo
+	v.Generator.setLabel(startLabel)
 
-	// Ejecutar el cuerpo
+	// Visitar declaraciones dentro del cuerpo del ciclo
 	for _, decl := range ctx.Block().AllDeclaraciones() {
-		val := v.Visit(decl)
-		if str, ok := val.(string); ok {
-			if str == "break" {
-				v.Generator.B(breakLabel)
-				break
-			}
-			if str == "continue" {
-				v.Generator.B(continueLabel)
-				break
-			}
+		switch {
+		case decl.Stmt() != nil:
+			v.Visit(decl.Stmt())
+		case decl.VarDcl() != nil:
+			v.Visit(decl.VarDcl())
+		case decl.FuncDcl() != nil:
+			v.Visit(decl.FuncDcl())
+		case decl.StructDcl() != nil:
+			v.Visit(decl.StructDcl())
+		case decl.FuncMain() != nil:
+			v.Visit(decl.FuncMain())
+		default:
+			v.Visit(decl)
 		}
 	}
 
-	// Etiqueta de continue (para continuar el ciclo)
+	// Etiqueta opcional para continue
 	v.Generator.setLabel(continueLabel)
-	v.Generator.B(condLabel)
 
-	// Etiqueta de salida
-	v.Generator.setLabel(breakLabel)
+	// Evaluar condición del ciclo
+	v.Generator.setLabel(condLabel)
 
+	val := v.Visit(ctx.Expresion())
+	pv, ok := val.(PrintValue)
+	if !ok {
+		fmt.Println("[ERROR] Condición del for no es PrintValue")
+		return nil
+	}
+
+	// Generar salto si la condición ya no se cumple
+	v.prepareCondBranch(pv, endLabel)
+
+	// Volver al cuerpo
+	v.Generator.B(startLabel)
+
+	// Fin del ciclo
+	v.Generator.setLabel(endLabel)
+
+	fmt.Println("[DEBUG] Salida de ForCondicionUnica")
+	return nil
+}
+
+func (v *ARMVisitor) VisitIncremento(ctx *parser.IncrementoContext) interface{} {
+	id := ctx.ID().GetText()
+	entry, ok := v.VarMap[id]
+	if !ok {
+		fmt.Printf("⚠️ Variable no encontrada en incremento: %s\n", id)
+		return nil
+	}
+
+	if entry.Tipo != "int" {
+		fmt.Printf("⚠️ Incremento no soportado para tipo: %s\n", entry.Tipo)
+		return nil
+	}
+
+	v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+	v.Generator.AddInstruction("ldr x0, [x1]")
+	v.Generator.AddInstruction("add x0, x0, #1")
+	v.Generator.AddInstruction("str x0, [x1]")
+
+	entry.Valor = "x0"
+	v.VarMap[id] = entry
+	return nil
+}
+
+func (v *ARMVisitor) VisitDecremento(ctx *parser.DecrementoContext) interface{} {
+	id := ctx.ID().GetText()
+	entry, ok := v.VarMap[id]
+	if !ok {
+		fmt.Printf("⚠️ Variable no encontrada en decremento: %s\n", id)
+		return nil
+	}
+
+	if entry.Tipo != "int" {
+		fmt.Printf("⚠️ Decremento no soportado para tipo: %s\n", entry.Tipo)
+		return nil
+	}
+
+	// x = x - 1
+	v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+	v.Generator.AddInstruction("ldr x0, [x1]")
+	v.Generator.AddInstruction("sub x0, x0, #1")
+	v.Generator.AddInstruction("str x0, [x1]")
+
+	entry.Valor = "x0"
+	v.VarMap[id] = entry
 	return nil
 }
 
