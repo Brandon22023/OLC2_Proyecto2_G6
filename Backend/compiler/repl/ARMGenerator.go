@@ -635,3 +635,50 @@ strcmp:
     ret
 `)
 }
+
+// Brandon no me mates porfa
+// Genera un ciclo for clásico: for (i = inicio; i < fin; i += inc) { cuerpo }
+func (g *ArmGenerator) GenerateForLoop(varName string, inicio, fin, inc int, cuerpo func(),
+	continueLabel, breakLabel string) {
+	// 1. Inicialización de la variable de control
+	g.Comment(fmt.Sprintf("Inicialización de %s", varName))
+	g.Mov("X0", inicio)
+	g.Push("X0")
+	g.PushObject(StackObject{Type: Int, Length: 8, Depth: g.Depth, Id: varName})
+
+	// 2. Etiquetas únicas
+	condLabel := g.GenerateUniqueLabel("for_cond")
+	endLabel := g.GenerateUniqueLabel("for_end")
+
+	// 3. Etiqueta de condición
+	g.setLabel(condLabel)
+
+	// 4. Comparar variable de control con el límite
+	offset, _ := g.GetObject(varName)
+	g.Ldr("X1", "SP", offset) // X1 = variable de control
+	g.Mov("X2", fin)          // X2 = límite
+	g.Cmp("X1", "X2")
+	g.Bge(endLabel) // Si X1 >= fin, termina el ciclo
+
+	// 5. Cuerpo del ciclo
+	cuerpo()
+
+	// 5.5 Etiqueta continue
+	g.setLabel(continueLabel) // Aquí se salta si hay un "continue"
+
+	// 6. Incremento
+	g.Ldr("X1", "SP", offset)
+	g.Addi("X1", "X1", inc)
+	g.Str("X1", "SP", offset)
+	// 7. Salto incondicional a la condición
+	g.B(condLabel)
+
+	// 8. Etiqueta de fin
+	g.setLabel(breakLabel)
+
+	// 9. Limpiar variable de control de la pila
+	g.PopObject()
+	g.Pop("X0")
+}
+
+// for que parece while, pero con una condición al inicio supuestamente ya jala XD

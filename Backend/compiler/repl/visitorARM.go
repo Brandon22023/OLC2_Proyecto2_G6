@@ -1164,3 +1164,181 @@ func (v *ARMVisitor) VisitSwitchDcl(ctx *parser.SwitchDclContext) interface{} {
 	v.Generator.setLabel(endLabel)
 	return nil
 }
+
+// Holi Brandon no me mates
+// Aquí están las funciones de control de flujo
+func (v *ARMVisitor) VisitBreakStatement(ctx *parser.BreakStatementContext) interface{} {
+	return "break"
+}
+
+func (v *ARMVisitor) VisitContinueStatement(ctx *parser.ContinueStatementContext) interface{} {
+	return "continue"
+}
+
+func (v *ARMVisitor) VisitForClasico(ctx *parser.ForClasicoContext) interface{} {
+	varName := ctx.Asignacion().ID().GetText()
+
+	// Obtener valor inicial
+	initVal := v.Visit(ctx.Asignacion().Expresion())
+	start := 0
+	if pv, ok := initVal.(PrintValue); ok && pv.Tipo == "entero" {
+		start = toInt(pv.Valor)
+	}
+
+	// Obtener condición final
+	condVal := v.Visit(ctx.Expresion())
+	end := 0
+	if pv, ok := condVal.(PrintValue); ok && pv.Tipo == "entero" {
+		end = toInt(pv.Valor)
+	}
+
+	// Crear etiquetas
+	continueLabel := v.Generator.GenerateUniqueLabel("for_continue")
+	breakLabel := v.Generator.GenerateUniqueLabel("for_break")
+
+	v.Generator.GenerateForLoop(varName, start, end+1, 1, func() {
+		for _, decl := range ctx.Block().AllDeclaraciones() {
+			val := v.Visit(decl)
+			if str, ok := val.(string); ok {
+				if str == "break" {
+					v.Generator.B(breakLabel)
+					break
+				}
+				if str == "continue" {
+					v.Generator.B(continueLabel)
+					break
+				}
+			}
+		}
+
+		// Incremento separado, no aquí
+	}, continueLabel, breakLabel)
+
+	return nil
+}
+
+// funcion for que parece while CREO QUE SI JALA BIEN
+func (v *ARMVisitor) VisitForCondicionUnica(ctx *parser.ForCondicionUnicaContext) interface{} {
+	condLabel := v.Generator.GenerateUniqueLabel("for_cond")
+	continueLabel := v.Generator.GenerateUniqueLabel("for_continue")
+	breakLabel := v.Generator.GenerateUniqueLabel("for_break")
+
+	// Etiqueta de inicio del ciclo
+	v.Generator.setLabel(condLabel)
+
+	// Evaluar la condición
+	val := v.Visit(ctx.Expresion())
+	// Aquí asume que la condición deja el resultado en X0 (0 = falso, distinto de 0 = verdadero)
+	// Si tu Visit devuelve PrintValue, adapta esto:
+	if pv, ok := val.(PrintValue); ok && pv.Tipo == "entero" {
+		v.Generator.Mov("X0", toInt(pv.Valor))
+	}
+	v.Generator.Cbz("X0", breakLabel)
+
+	// Ejecutar el cuerpo
+	for _, decl := range ctx.Block().AllDeclaraciones() {
+		val := v.Visit(decl)
+		if str, ok := val.(string); ok {
+			if str == "break" {
+				v.Generator.B(breakLabel)
+				break
+			}
+			if str == "continue" {
+				v.Generator.B(continueLabel)
+				break
+			}
+		}
+	}
+
+	// Etiqueta de continue (para continuar el ciclo)
+	v.Generator.setLabel(continueLabel)
+	v.Generator.B(condLabel)
+
+	// Etiqueta de salida
+	v.Generator.setLabel(breakLabel)
+
+	return nil
+}
+
+/*func (v *ARMVisitor) VisitForCondicionUnica(ctx *parser.ForCondicionUnicaContext) interface{} {
+	// Generar etiquetas únicas
+	startLabel := v.Generator.GenerateUniqueLabel("for_cond")
+	continueLabel := v.Generator.GenerateUniqueLabel("for_continue")
+	breakLabel := v.Generator.GenerateUniqueLabel("for_break")
+
+	// Etiqueta de inicio del ciclo
+	v.Generator.setLabel(startLabel)
+
+	// Evaluar la condición
+	val := v.Visit(ctx.Expresion())
+	if res, ok := val.(PrintValue); ok && res.Tipo == "bool" {
+		// Cargar la condición en un registro (simulación)
+		v.Generator.Mov("X0", toInt(res.Valor))
+		// Saltar si la condición es falsa (0)
+		v.Generator.Cbz("X0", breakLabel)
+	} else {
+		// Si no es constante, evaluá siempre y luego salí si es 0
+		// Este caso lo podés extender si implementás evaluación dinámica.
+	}
+
+	// Entrar al cuerpo del ciclo
+	for _, decl := range ctx.Block().AllDeclaraciones() {
+		val := v.Visit(decl)
+		if str, ok := val.(string); ok {
+			if str == "break" {
+				v.Generator.B(breakLabel)
+				break
+			}
+			if str == "continue" {
+				v.Generator.B(continueLabel)
+				break
+			}
+		}
+	}
+
+	// Etiqueta de continue (para continuar el ciclo)
+	v.Generator.setLabel(continueLabel)
+	v.Generator.B(startLabel)
+
+	// Etiqueta de salida
+	v.Generator.setLabel(breakLabel)
+
+	return nil
+}
+*/
+/* OTRA FORMA QUE ME DIO CHAT GPT DE COMO PODRIA SER EL FOR CONDICION UNICA
+func (v *ARMVisitor) VisitForCondicionUnica(ctx *parser.ForCondicionUnicaContext) any {
+	condLabel := v.Generator.GenerateUniqueLabel("for_cond")
+	breakLabel := v.Generator.GenerateUniqueLabel("for_break")
+	continueLabel := v.Generator.GenerateUniqueLabel("for_continue")
+
+	v.Generator.setLabel(condLabel)
+
+	// Evaluar la condición del for (i < 3)
+	v.Visit(ctx.Expr())
+
+	// Obtener el valor en un registro (X0, X1, etc.)
+	cond := v.Generator.PopObjectTo("X0")
+
+	// Saltar si la condición es falsa (0)
+	v.Generator.Cbz("X0", breakLabel)
+
+	// Ejecutar el cuerpo
+	v.ScopeTrace.NewScope("FOR_UNICO")
+	v.Generator.NewScope()
+	v.Visit(ctx.Block())
+	v.Generator.EndScope()
+	v.ScopeTrace.EndScope()
+
+	// continue:
+	v.Generator.setLabel(continueLabel)
+
+	// Saltar de nuevo a la condición
+	v.Generator.B(condLabel)
+
+	// break:
+	v.Generator.setLabel(breakLabel)
+
+	return nil
+}
+*/
