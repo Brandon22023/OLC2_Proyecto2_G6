@@ -220,7 +220,8 @@ func main() {
 		generator := repl.NewArmGenerator()
 		armVisitor := &repl.ARMVisitor{
 			Generator: generator,
-			ScopeTrace: visitor.ScopeTrace, // <-- así
+			ScopeTrace: visitor.ScopeTrace,
+			FuncLabels: make(map[string]string),
 		}
 		armVisitor.Visit(arbolito)
         generator.UsesIntToAscii = armVisitor.UsesIntToAscii

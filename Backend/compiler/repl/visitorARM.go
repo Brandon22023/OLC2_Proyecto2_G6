@@ -26,6 +26,7 @@ type ARMVisitor struct {
 	UsesFloatToAscii bool
 	UsesBoolToAscii  bool
 	UsesRuneToAscii  bool
+	FuncLabels map[string]string   //las funciones se guardaran aqui en un label para mas estabilidad
 }
 
 type PrintValue struct {
@@ -57,46 +58,58 @@ func (v *ARMVisitor) Visit(tree antlr.ParseTree) interface{} {
 }
 
 func (v *ARMVisitor) VisitPrograma(ctx *parser.ProgramaContext) interface{} {
-	v.VarMap = make(map[string]VariableEntry)
-	v.PrintCount = 0
+    v.VarMap = make(map[string]VariableEntry)
+    v.PrintCount = 0
 
-	// Etiquetas estándar para salto de línea y booleanos
-	v.Generator.AddData(`msg_nl: .ascii "\n"`)
-	v.Generator.AddData(`len_nl: .quad . - msg_nl`)
-	v.Generator.AddData(`msg_true: .ascii "true"`)
-	v.Generator.AddData(`len_true: .quad . - msg_true`)
-	v.Generator.AddData(`msg_falsestr: .ascii "false"`)
-	v.Generator.AddData(`len_falsestr: .quad . - msg_falsestr`)
+    // Etiquetas estándar para salto de línea y booleanos
+    v.Generator.AddData(`msg_nl: .ascii "\n"`)
+    v.Generator.AddData(`len_nl: .quad . - msg_nl`)
+    v.Generator.AddData(`msg_true: .ascii "true"`)
+    v.Generator.AddData(`len_true: .quad . - msg_true`)
+    v.Generator.AddData(`msg_falsestr: .ascii "false"`)
+    v.Generator.AddData(`len_falsestr: .quad . - msg_falsestr`)
+    v.Generator.AddData(`.align 3`)
+    v.Generator.AddData(`float_100: .double 100.0`)
 
-	// 🛠 FIX: Agrega esta constante
-	v.Generator.AddData(`.align 3`)
-	v.Generator.AddData(`float_100: .double 100.0`)
+    // 1. Registrar funciones y variables globales
+    for _, decl := range ctx.AllDeclaraciones() {
+        if decl.FuncDcl() != nil {
+            v.VisitFuncDcl(decl.FuncDcl().(*parser.FuncDclContext))
+        } else if decl.FuncMain() != nil {
+            // No ejecutar main aquí
+        } else {
+            v.Visit(decl)
+        }
+    }
 
-	for _, decl := range ctx.AllDeclaraciones() {
-		v.Visit(decl)
-	}
+    // 2. Ejecutar SOLO el main
+    for _, decl := range ctx.AllDeclaraciones() {
+        if decl.FuncMain() != nil {
+            v.VisitFuncMain(decl.FuncMain().(*parser.FuncMainContext))
+        }
+    }
 
-	if v.Generator != nil && v.VarMap != nil && v.ScopeTrace != nil {
-		v.CollectAllVariables(v.ScopeTrace.GlobalScope)
-	}
-	if v.UsesIntToAscii {
-		v.Generator.AddIntToAsciiFunction()
-	}
-	if v.UsesFloatToAscii {
-		v.Generator.AddFloatToAsciiFunction()
-	}
-	if v.UsesBoolToAscii {
-		v.Generator.AddBoolToAsciiFunction()
-	}
-	if v.UsesRuneToAscii {
-		v.Generator.AddRuneToAsciiFunction()
-	}
+    if v.Generator != nil && v.VarMap != nil && v.ScopeTrace != nil {
+        v.CollectAllVariables(v.ScopeTrace.GlobalScope)
+    }
+    if v.UsesIntToAscii {
+        v.Generator.AddIntToAsciiFunction()
+    }
+    if v.UsesFloatToAscii {
+        v.Generator.AddFloatToAsciiFunction()
+    }
+    if v.UsesBoolToAscii {
+        v.Generator.AddBoolToAsciiFunction()
+    }
+    if v.UsesRuneToAscii {
+        v.Generator.AddRuneToAsciiFunction()
+    }
 
-	v.Generator.AddInstruction("    # Salida final")
-	v.Generator.AddInstruction("mov x0, #0")
-	v.Generator.AddInstruction("mov w8, #93")
-	v.Generator.AddInstruction("svc #0")
-	return nil
+    v.Generator.AddInstruction("    # Salida final")
+    v.Generator.AddInstruction("mov x0, #0")
+    v.Generator.AddInstruction("mov w8, #93")
+    v.Generator.AddInstruction("svc #0")
+    return nil
 }
 
 func (v *ARMVisitor) VisitDeclaraciones(ctx *parser.DeclaracionesContext) interface{} {
@@ -1485,3 +1498,73 @@ func (v *ARMVisitor) VisitForCondicionUnica(ctx *parser.ForCondicionUnicaContext
 	return nil
 }
 */
+
+
+//aqui seran las funciones de las estructuras
+func NewARMVisitor(generator *ArmGenerator, scope *ScopeTrace) *ARMVisitor {
+    return &ARMVisitor{
+        Generator:  generator,
+        ScopeTrace: scope,
+        FuncLabels: make(map[string]string),
+    }
+}
+
+func (v *ARMVisitor) VisitFuncDcl(ctx *parser.FuncDclContext) interface{} {
+    funcName := ctx.ID().GetText()
+    label := "fn_" + funcName
+    v.FuncLabels[funcName] = label
+
+    // Genera el label ARM
+    v.Generator.setLabel(label)
+
+    // Parámetros: asume máximo 4, puedes expandir si necesitas más
+    paramCount := 0
+    paramNames := []string{}
+    if ctx.ParametrosFormales() != nil {
+        for _, param := range ctx.ParametrosFormales().AllParametro() {
+            paramNames = append(paramNames, param.ID().GetText())
+            paramCount++
+        }
+    }
+
+    // Guarda los parámetros en variables (en memoria)
+    for i, name := range paramNames {
+        // x0, x1, x2, x3...
+        v.Generator.AddInstruction(fmt.Sprintf("str x%d, =%s", i, name))
+    }
+
+    // Genera el cuerpo de la función
+    for _, decl := range ctx.Block().AllDeclaraciones() {
+        v.Visit(decl)
+    }
+
+    // Retorno: si tu lenguaje soporta return, deberías capturarlo y poner el valor en x0
+    // Aquí solo ponemos ret
+    v.Generator.AddInstruction("ret")
+    return nil
+}
+
+func (v *ARMVisitor) VisitFuncCall(ctx *parser.FuncCallContext) interface{} {
+    funcName := ctx.ID().GetText()
+    label, ok := v.FuncLabels[funcName]
+    if !ok {
+        fmt.Printf("Función '%s' no declarada\n", funcName)
+        return nil
+    }
+
+    // Evalúa argumentos y colócalos en x0, x1, ...
+    if ctx.ParametrosReales() != nil {
+        for i, expr := range ctx.ParametrosReales().AllExpresion() {
+            val := v.Visit(expr)
+            if pv, ok := val.(PrintValue); ok {
+                v.Generator.AddMov(fmt.Sprintf("x%d", i), pv.Valor)
+            }
+        }
+    }
+
+    // Llama a la función
+    v.Generator.AddBl(label)
+
+    // El valor de retorno está en x0
+    return PrintValue{Tipo: "int", Valor: "x0"} // O el tipo real
+}
