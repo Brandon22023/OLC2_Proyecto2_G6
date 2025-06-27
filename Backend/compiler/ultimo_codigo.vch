@@ -2,12 +2,25 @@ fn saludar() {
 	print("¡Hola, mundo!")
 }
 
+fn obtener_numero() int {
+	return 42
+}
+
+
 fn main() {
 	mut puntos int = 0
 	print("=== Prueba de funciones simplificada ===")
 
 	// 1. Funciones sin parámetros
-	mut puntos_simples int = 0
+	mut puntos_simples int= 0
+        mut numero int = 0
 	saludar()
-	
+	numero = obtener_numero()
+	print("Número obtenido:", numero)
+        print(numero)
+	if numero == 42 {
+		print("OK obtener_numero")
+		puntos_simples += 1
+	}
+
 }

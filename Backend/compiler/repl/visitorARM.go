@@ -61,7 +61,7 @@ func (v *ARMVisitor) VisitPrograma(ctx *parser.ProgramaContext) interface{} {
     v.VarMap = make(map[string]VariableEntry)
     v.PrintCount = 0
 
-    // Etiquetas estándar para salto de línea y booleanos
+    // Sección .data: etiquetas estándar
     v.Generator.AddData(`msg_nl: .ascii "\n"`)
     v.Generator.AddData(`len_nl: .quad . - msg_nl`)
     v.Generator.AddData(`msg_true: .ascii "true"`)
@@ -71,44 +71,53 @@ func (v *ARMVisitor) VisitPrograma(ctx *parser.ProgramaContext) interface{} {
     v.Generator.AddData(`.align 3`)
     v.Generator.AddData(`float_100: .double 100.0`)
 
-    // 1. Registrar funciones y variables globales
+    // 1. PRIMER PASO: Registrar labels de todas las funciones
+    for _, decl := range ctx.AllDeclaraciones() {
+        if decl.FuncDcl() != nil {
+            funcName := decl.FuncDcl().(*parser.FuncDclContext).ID().GetText()
+            label := "fn_" + funcName
+            v.FuncLabels[funcName] = label
+        }
+    }
+
+    // 2. SEGUNDO PASO: Procesar funciones y variables globales
     for _, decl := range ctx.AllDeclaraciones() {
         if decl.FuncDcl() != nil {
             v.VisitFuncDcl(decl.FuncDcl().(*parser.FuncDclContext))
         } else if decl.FuncMain() != nil {
-            // No ejecutar main aquí
+            // No ejecutes main aquí, lo haremos en _start
+            continue
         } else {
             v.Visit(decl)
         }
     }
 
-    // 2. Ejecutar SOLO el main
+    // 3. Generar _start y poner el cuerpo de main ahí
+    v.Generator.AddInstruction(".global _start")
+    v.Generator.setLabel("_start")
+    v.Generator.AddInstruction("    adr x10, heap")
+
+    // Busca el main y genera su cuerpo aquí
     for _, decl := range ctx.AllDeclaraciones() {
         if decl.FuncMain() != nil {
-            v.VisitFuncMain(decl.FuncMain().(*parser.FuncMainContext))
+            mainCtx := decl.FuncMain().(*parser.FuncMainContext)
+            for _, d := range mainCtx.Block().AllDeclaraciones() {
+                v.Visit(d)
+            }
         }
     }
 
-    if v.Generator != nil && v.VarMap != nil && v.ScopeTrace != nil {
-        v.CollectAllVariables(v.ScopeTrace.GlobalScope)
-    }
-    if v.UsesIntToAscii {
-        v.Generator.AddIntToAsciiFunction()
-    }
-    if v.UsesFloatToAscii {
-        v.Generator.AddFloatToAsciiFunction()
-    }
-    if v.UsesBoolToAscii {
-        v.Generator.AddBoolToAsciiFunction()
-    }
-    if v.UsesRuneToAscii {
-        v.Generator.AddRuneToAsciiFunction()
-    }
+    // Termina el programa
+    v.Generator.AddInstruction("    mov x0, #0")
+    v.Generator.AddInstruction("    mov w8, #93")
+    v.Generator.AddInstruction("    svc #0")
 
-    v.Generator.AddInstruction("    # Salida final")
-    v.Generator.AddInstruction("mov x0, #0")
-    v.Generator.AddInstruction("mov w8, #93")
-    v.Generator.AddInstruction("svc #0")
+    // Funciones auxiliares si se usaron
+    if v.UsesIntToAscii   { v.Generator.AddIntToAsciiFunction() }
+    if v.UsesFloatToAscii { v.Generator.AddFloatToAsciiFunction() }
+    if v.UsesBoolToAscii  { v.Generator.AddBoolToAsciiFunction() }
+    if v.UsesRuneToAscii  { v.Generator.AddRuneToAsciiFunction() }
+
     return nil
 }
 
@@ -132,10 +141,12 @@ func (v *ARMVisitor) VisitDeclaraciones(ctx *parser.DeclaracionesContext) interf
 }
 
 func (v *ARMVisitor) VisitFuncMain(ctx *parser.FuncMainContext) interface{} {
+	v.Generator.setLabel("fn_main")
 	fmt.Println("VisitFuncMain ejecutado")
 	for _, decl := range ctx.Block().AllDeclaraciones() {
 		v.Visit(decl)
 	}
+	v.Generator.AddInstruction("ret")
 	return nil
 }
 
@@ -468,7 +479,19 @@ func (v *ARMVisitor) replaceVarData(id string, newValue string) {
 
 func (v *ARMVisitor) VisitAsignacionLUEGO(ctx *parser.AsignacionLUEGOContext) interface{} {
 	id := ctx.ID().GetText()
+    expr := ctx.Expresion()
+	// Si es llamada a función
+    if expr.GetRuleContext().GetRuleIndex() == parser.VlangParserRULE_funcCall {
+		v.Visit(expr) // Esto llamará a VisitFuncCall y pondrá el valor en x0
+		entry := v.VarMap[id]
+		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+		v.Generator.AddInstruction("str x0, [x1]")
+		entry.Valor = "x0"
+		v.VarMap[id] = entry
+		return nil
+	}
 	val := v.Visit(ctx.Expresion())
+
 
 	if pv, ok := val.(PrintValue); ok {
 		if entry, exists := v.VarMap[id]; exists {
@@ -624,10 +647,23 @@ func normalizeTipo(t string) string {
 
 func (v *ARMVisitor) VisitVariableDeclarationImmutable(ctx *parser.VariableDeclarationImmutableContext) interface{} {
 	id := ctx.ID().GetText()
+	expr := ctx.Expresion()
 	fmt.Println("DEBUG: Entrando a VariableDeclarationImmutable para:", id)
 
 	if ctx.ASSIGN() == nil {
 		fmt.Println("DEBUG: No hay asignación para", id)
+		return nil
+	}
+
+	// Si es llamada a función
+    if expr.GetRuleContext().GetRuleIndex() == parser.VlangParserRULE_funcCall {
+		v.Visit(expr) // Esto llamará a VisitFuncCall y pondrá el valor en x0
+		tipo := "int" // Puedes mejorar esto si tienes el tipo real
+		label := id
+		v.VarMap[id] = VariableEntry{Tipo: tipo, Valor: label, Label: label}
+		v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0", label))
+		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+		v.Generator.AddInstruction("str x0, [x1]")
 		return nil
 	}
 
@@ -714,6 +750,7 @@ func (v *ARMVisitor) VisitVariableDeclarationImmutable(ctx *parser.VariableDecla
 			}
 		}
 	}
+	
 	return nil
 }
 
@@ -1072,9 +1109,13 @@ func (v *ARMVisitor) VisitIfDcl(ctx *parser.IfDclContext) interface{} {
 	}
 	v.prepareCondBranch(val, falseLabel)
 
-	for _, decl := range ctx.AllDeclaraciones() {
-		v.Visit(decl)
-	}
+
+    for _, decl := range ctx.AllDeclaraciones() {
+        res := v.Visit(decl)
+        if ret, ok := res.(PrintValue); ok && ret.Tipo == "__return__" {
+            return ret // Propaga el return hacia arriba
+        }
+    }
 	v.Generator.B(endLabel)
 
 	// --- ELSE IFs ---
@@ -1245,15 +1286,29 @@ func (v *ARMVisitor) VisitContinueStatement(ctx *parser.ContinueStatementContext
 	return "continue"
 }
 
-// Ejecuta cualquier expresión que aparezca como statement, p. ej.  i += 1
 func (v *ARMVisitor) VisitExpresionStatement(ctx *parser.ExpresionStatementContext) interface{} {
-	return v.Visit(ctx.Expresion())
+    exp := ctx.Expresion()
+    ruleIndex := exp.GetRuleContext().GetRuleIndex()
+    switch ruleIndex {
+    case parser.VlangParserRULE_funcCall,
+         parser.VlangParserRULE_llamadaFuncion:
+        // Solo llama a Visit, el dispatch es automático
+        return v.Visit(exp)
+    default:
+        return v.Visit(exp)
+    }
 }
+
 
 func (v *ARMVisitor) VisitFor_context(ctx *parser.For_contextContext) interface{} {
 	fmt.Println("[DEBUG] Entrando a VisitFor_context")
 	return v.Visit(ctx.ForDcl())
 }
+
+func (v *ARMVisitor) VisitStmt(ctx *parser.StmtContext) interface{} {
+    return v.VisitChildren(ctx)
+}
+
 
 func (v *ARMVisitor) VisitForClasico(ctx *parser.ForClasicoContext) interface{} {
 	fmt.Println("[DEBUG] Visitando For clásico")
@@ -1292,9 +1347,12 @@ func (v *ARMVisitor) VisitForClasico(ctx *parser.ForClasicoContext) interface{} 
 	v.prepareCondBranch(valCond, labelEnd)
 
 	// Cuerpo del for
-	for _, decl := range body.AllDeclaraciones() {
-		v.Visit(decl)
-	}
+    for _, decl := range body.AllDeclaraciones() {
+        res := v.Visit(decl)
+        if ret, ok := res.(PrintValue); ok && ret.Tipo == "__return__" {
+            return ret // Propaga el return hacia arriba
+        }
+    }
 
 	// Incremento (stmt)
 	if post != nil {
@@ -1514,43 +1572,67 @@ func (v *ARMVisitor) VisitFuncDcl(ctx *parser.FuncDclContext) interface{} {
     label := "fn_" + funcName
     v.FuncLabels[funcName] = label
 
-    // Genera el label ARM
+    // ① Definir la etiqueta de la función en el .s
     v.Generator.setLabel(label)
 
-    // Parámetros: asume máximo 4, puedes expandir si necesitas más
-    paramCount := 0
+    // ② Extraer parámetros (hasta 4 en registros x0–x3)
     paramNames := []string{}
     if ctx.ParametrosFormales() != nil {
         for _, param := range ctx.ParametrosFormales().AllParametro() {
             paramNames = append(paramNames, param.ID().GetText())
-            paramCount++
         }
     }
 
-    // Guarda los parámetros en variables (en memoria)
+    // ③ Guardar cada parámetro en memoria usando su etiqueta
     for i, name := range paramNames {
-        // x0, x1, x2, x3...
+        // Sube x{i} a la etiqueta =name
         v.Generator.AddInstruction(fmt.Sprintf("str x%d, =%s", i, name))
     }
 
-    // Genera el cuerpo de la función
+    // ④ Generar etiqueta de salida para los return
+    endLabel := v.Generator.GenerateUniqueLabel("fn_end")
+
+    // ⑤ Recorrer el cuerpo y detectar returns para saltar al endLabel
     for _, decl := range ctx.Block().AllDeclaraciones() {
-        v.Visit(decl)
+        res := v.Visit(decl)
+        if ret, ok := res.(PrintValue); ok && ret.Tipo == "__return__" {
+            v.Generator.B(endLabel)
+            break
+        }
     }
 
-    // Retorno: si tu lenguaje soporta return, deberías capturarlo y poner el valor en x0
-    // Aquí solo ponemos ret
+    // ⑥ Marcar la etiqueta de salida y emitir el ret
+    v.Generator.setLabel(endLabel)
     v.Generator.AddInstruction("ret")
     return nil
 }
+func (v *ARMVisitor) VisitLlamadaFuncionExpr(ctx *parser.LlamadaFuncionExprContext) interface{} {
+    return v.Visit(ctx.LlamadaFuncion())
+}
 
-func (v *ARMVisitor) VisitFuncCall(ctx *parser.FuncCallContext) interface{} {
+func (v *ARMVisitor) VisitLlamadaFuncion(ctx *parser.LlamadaFuncionContext) interface{} {
+    // Solo soportamos ID LPAREN ... RPAREN por ahora
     funcName := ctx.ID().GetText()
     label, ok := v.FuncLabels[funcName]
     if !ok {
         fmt.Printf("Función '%s' no declarada\n", funcName)
         return nil
     }
+    // Evalúa argumentos si tienes soporte
+    // ...
+    v.Generator.AddBl(label)
+    return nil
+}
+func (v *ARMVisitor) VisitFuncCall(ctx *parser.FuncCallContext) interface{} {
+    fmt.Println("[DEBUG] VisitFuncCall:", ctx.GetText())
+	funcName := ctx.ID().GetText()
+    label, ok := v.FuncLabels[funcName]
+    if !ok {
+        fmt.Printf("Función '%s' no declarada\n", funcName)
+        return nil
+    }
+
+	v.Generator.DebugPrint("call_"+funcName, "Entrando a "+funcName+"\\n")
 
     // Evalúa argumentos y colócalos en x0, x1, ...
     if ctx.ParametrosReales() != nil {
@@ -1563,8 +1645,38 @@ func (v *ARMVisitor) VisitFuncCall(ctx *parser.FuncCallContext) interface{} {
     }
 
     // Llama a la función
+	fmt.Println("[DEBUG] Llamando a la función:", funcName, "SU LABEL ES:", label)
     v.Generator.AddBl(label)
-
+    v.Generator.DebugPrint("ret_"+funcName, "Saliendo de "+funcName+"\\n")
     // El valor de retorno está en x0
     return PrintValue{Tipo: "int", Valor: "x0"} // O el tipo real
+}
+
+func (v *ARMVisitor) CallFunctionByName(name string) {
+    label, ok := v.FuncLabels[name]
+    if !ok {
+        fmt.Printf("Función '%s' no declarada\n", name)
+        return
+    }
+    v.Generator.AddBl(label)
+}
+func (v *ARMVisitor) VisitReturnStatement(ctx *parser.ReturnStatementContext) interface{} {
+    val := v.Visit(ctx.Expresion())
+    if pv, ok := val.(PrintValue); ok {
+        v.Generator.AddMov("x0", pv.Valor) // <-- Esto es lo importante
+        return PrintValue{Tipo: "__return__"}
+    }
+    return PrintValue{Tipo: "__return__"}
+}
+func (g *ArmGenerator) DebugPrint(label string, msg string) {
+    dataLabel := "dbg_" + label
+    lenLabel := "len_" + dataLabel
+    g.AddData(fmt.Sprintf("%s: .ascii \"%s\"", dataLabel, msg))
+    g.AddData(fmt.Sprintf("%s: .quad . - %s", lenLabel, dataLabel))
+    g.AddInstruction("mov x0, #1") // <-- aquí ya no uses fmt.Sprintf
+    g.AddInstruction(fmt.Sprintf("ldr x1, =%s", dataLabel))
+    g.AddInstruction(fmt.Sprintf("ldr x2, =%s", lenLabel))
+    g.AddInstruction("ldr x2, [x2]")
+    g.AddInstruction("mov w8, #64")
+    g.AddInstruction("svc #0")
 }

@@ -459,9 +459,9 @@ func (g *ArmGenerator) String() string {
     mov x0, x2
     ret
 `)
-	sb.WriteString(".global _start\n")
-	sb.WriteString("_start:\n")
-	sb.WriteString("    adr x10, heap\n")
+	//sb.WriteString(".global _start\n")
+	//sb.WriteString("_start:\n")
+	//sb.WriteString("    adr x10, heap\n")
 	// Instrucciones principales
 	for _, instr := range g.Instructions {
 		sb.WriteString(instr + "\n")
