@@ -10,80 +10,52 @@ msg_falsestr: .ascii "false"
 len_falsestr: .quad . - msg_falsestr
 .align 3
 float_100: .double 100.0
-msg1: .ascii "HOla mundo arm"
+.align 3
+puntos: .quad 0
+msg1: .ascii "=== Prueba Básica Simplificada ==="
 len1: .quad . - msg1
 .align 3
-float_literal_2: .quad 0x4034800000000000
+entero: .quad 42
 .align 3
-float_literal_3: .quad 0x400921cac083126f
-msg4: .ascii "hola"
-len4: .quad . - msg4
+decimal: .quad 0x40091eb851eb851f
+texto: .asciz "Hola, mundo!"
+len_texto: .quad . - texto
 .align 3
-float_literal_5: .quad 0x4026666666666666
-msg6: .ascii "ab"
+booleano: .quad 1
+msg2: .ascii "OK entero"
+len2: .quad . - msg2
+.align 3
+cmp_float_left_3: .quad 0x40091eb851eb851f
+.align 3
+cmp_float_right_4: .quad 0x4008000000000000
+msg5: .ascii "OK decimal"
+len5: .quad . - msg5
+msg6: .ascii "OK texto"
 len6: .quad . - msg6
-.align 3
-x: .quad 10
-s: .ascii "Hola"
-len_s: .quad . - s
-.align 3
-y: .quad 0x4025000000000000
-k: .byte 66
-len_k: .quad 1
-.align 3
-l: .quad 0
-msg7: .ascii "valor s: "
+msg7: .ascii "OK booleano"
 len7: .quad . - msg7
-msg8: .ascii "Hola"
+msg8: .ascii "OK asignación entero"
 len8: .quad . - msg8
 .align 3
-var: .quad 30
-msg9: .ascii "valor de var: "
+suma: .quad 15
+msg9: .ascii "OK suma"
 len9: .quad . - msg9
-msg10: .ascii "nuevo valor de var: "
+.align 3
+resta: .quad 5
+msg10: .ascii "OK resta"
 len10: .quad . - msg10
-.align 3
-u: .quad 10
-.align 3
-o: .quad 0x40091eb851eb851f
-.align 3
-b: .quad 0
-r: .byte 90
-len_r: .quad 1
-.align 3
-float_temp_1: .quad 0x40191eb851eb851f
-msg11: .ascii "Mundo"
+msg11: .ascii "OK igualdad"
 len11: .quad . - msg11
-.align 3
-cmp_float_left_12: .quad 0x4014666666666666
-.align 3
-cmp_float_right_13: .quad 0x4025000000000000
-.align 3
-cmp_float_left_14: .quad 0x4014666666666666
-.align 3
-cmp_float_right_15: .quad 0x4025000000000000
-.align 3
-cmp_float_left_16: .quad 0x4025000000000000
-.align 3
-cmp_float_right_17: .quad 0x4025000000000000
-.align 3
-cmp_eq_float_left_18: .quad 0x4014000000000000
-.align 3
-cmp_eq_float_right_19: .quad 0x4014000000000000
-.align 3
-cmp_eq_float_left_20: .quad 0x4014000000000000
-.align 3
-cmp_eq_float_right_21: .quad 0x4014000000000000
-.align 3
-cmp_eq_float_left_22: .quad 0x400999999999999a
-.align 3
-cmp_eq_float_right_23: .quad 0x400999999999999a
-.align 3
-cmp_eq_float_left_24: .quad 0x400999999999999a
-.align 3
-cmp_eq_float_right_25: .quad 0x4014000000000000
-.align 3
-float_literal_26: .quad 0xc0091eb851eb851f
+msg12: .ascii "OK lógica AND"
+len12: .quad . - msg12
+msg13: .ascii "OK lógica OR negada"
+len13: .quad . - msg13
+msg14: .ascii "Texto de prueba"
+len14: .quad . - msg14
+msg15: .ascii "Puntos obtenidos: "
+len15: .quad . - msg15
+msg16: .ascii " / 10"
+len16: .quad . - msg16
 .text
 .global malloc
 malloc:
@@ -95,87 +67,34 @@ malloc:
 .global _start
 _start:
     adr x10, heap
-mov x0, #5
-ldr x1, =buffer
-bl int_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
 mov x0, #1
 ldr x1, =msg1
 ldr x2, =len1
 ldr x2, [x2]
 mov w8, #64
 svc #0
-mov x0, #5
-ldr x1, =buffer
-bl int_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
 mov x0, #1
 ldr x1, =msg_nl
 ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
-ldr x1, =float_literal_2
-ldr d0, [x1]
-ldr x1, =buffer
-bl float_to_ascii
-mov x2, x0
-ldr x1, =buffer
+ldr x1, =entero
+ldr x0, [x1]
+mov x0, x0
+mov x1, 42
+cmp x0, x1
+mov x2, #0
+beq cmp_eq_true_1
+b cmp_eq_end_1
+cmp_eq_true_1:
+mov x2, #1
+cmp_eq_end_1:
+cmp x2, #0
+beq ifend_1
 mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 97
-ldr x1, =buffer
-bl rune_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x1, =float_literal_3
-ldr d0, [x1]
-ldr x1, =buffer
-bl float_to_ascii
-mov x2, x0
-ldr x1, =buffer
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg4
-ldr x2, =len4
+ldr x1, =msg2
+ldr x2, =len2
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -185,12 +104,30 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
-mov x0, #10
-ldr x1, =buffer
-bl int_to_ascii
-mov x2, x0
-mov x1, x1
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
+str x0, [x1]
+B ifend_1
+ifend_1:
+ldr x0, =cmp_float_left_3
+ldr d0, [x0]
+ldr x1, =cmp_float_right_4
+ldr d1, [x1]
+fcmp d0, d1
+mov x2, #0
+bgt cmp_true_1
+b cmp_end_1
+cmp_true_1:
+mov x2, #1
+cmp_end_1:
+cmp x2, #0
+beq ifend_2
 mov x0, #1
+ldr x1, =msg5
+ldr x2, =len5
+ldr x2, [x2]
 mov w8, #64
 svc #0
 mov x0, #1
@@ -199,21 +136,17 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
-ldr x1, =float_literal_5
-ldr d0, [x1]
-ldr x1, =buffer
-bl float_to_ascii
-mov x2, x0
-ldr x1, =buffer
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
+str x0, [x1]
+B ifend_2
+ifend_2:
+ldr x1, =texto
+ldr x0, [x1]
+cmp x2, #0
+beq ifend_3
 mov x0, #1
 ldr x1, =msg6
 ldr x2, =len6
@@ -226,55 +159,53 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
-mov x0, #7
-ldr x1, =buffer
-bl int_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, 1
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, 65
-ldr x1, =buffer
-bl rune_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #10
-ldr x1, =buffer
-bl int_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
+str x0, [x1]
+B ifend_3
+ifend_3:
+ldr x1, =booleano
+ldr x0, [x1]
+mov x0, x0
+cmp x0, #0
+beq ifend_4
 mov x0, #1
 ldr x1, =msg7
 ldr x2, =len7
 ldr x2, [x2]
 mov w8, #64
 svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
+str x0, [x1]
+B ifend_4
+ifend_4:
+ldr x1, =entero
+mov x0, #99
+str x0, [x1]
+ldr x1, =entero
+ldr x0, [x1]
+mov x0, x0
+mov x1, 99
+cmp x0, x1
+mov x2, #0
+beq cmp_eq_true_2
+b cmp_eq_end_2
+cmp_eq_true_2:
+mov x2, #1
+cmp_eq_end_2:
+cmp x2, #0
+beq ifend_5
 mov x0, #1
 ldr x1, =msg8
 ldr x2, =len8
@@ -287,133 +218,196 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
-ldr x1, =y
-ldr d0, [x1]
-ldr x1, =buffer
-bl float_to_ascii
-mov x2, x0
-ldr x1, =buffer
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 66
-ldr x1, =buffer
-bl rune_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 0
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
+str x0, [x1]
+B ifend_5
+ifend_5:
+ldr x1, =suma
+ldr x0, [x1]
+mov x0, x0
+mov x1, 15
+cmp x0, x1
+mov x2, #0
+beq cmp_eq_true_3
+b cmp_eq_end_3
+cmp_eq_true_3:
+mov x2, #1
+cmp_eq_end_3:
+cmp x2, #0
+beq ifend_6
 mov x0, #1
 ldr x1, =msg9
 ldr x2, =len9
 ldr x2, [x2]
 mov w8, #64
 svc #0
-mov x0, #30
-ldr x1, =buffer
-bl int_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
 mov x0, #1
 ldr x1, =msg_nl
 ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
-ldr x1, =var
-mov x0, #50
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
 str x0, [x1]
+B ifend_6
+ifend_6:
+ldr x1, =resta
+ldr x0, [x1]
+mov x0, x0
+mov x1, 5
+cmp x0, x1
+mov x2, #0
+beq cmp_eq_true_4
+b cmp_eq_end_4
+cmp_eq_true_4:
+mov x2, #1
+cmp_eq_end_4:
+cmp x2, #0
+beq ifend_7
 mov x0, #1
 ldr x1, =msg10
 ldr x2, =len10
 ldr x2, [x2]
 mov w8, #64
 svc #0
-mov x0, #50
-ldr x1, =buffer
-bl int_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
 mov x0, #1
 ldr x1, =msg_nl
 ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
-ldr x1, =u
-mov x0, #20
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
 str x0, [x1]
-ldr x0, =float_temp_1
-ldr x0, [x0]
-ldr x1, =o
-str x0, [x1]
-ldr x1, =b
-mov x0, #1
-str x0, [x1]
-mov x0, #20
-ldr x1, =buffer
-bl int_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x1, =o
-ldr d0, [x1]
-ldr x1, =buffer
-bl float_to_ascii
-mov x2, x0
-ldr x1, =buffer
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
+B ifend_7
+ifend_7:
+mov x0, 10
+mov x1, 10
+cmp x0, x1
+mov x2, #0
+beq cmp_eq_true_5
+b cmp_eq_end_5
+cmp_eq_true_5:
+mov x2, #1
+cmp_eq_end_5:
+cmp x2, #0
+beq ifend_8
 mov x0, #1
 ldr x1, =msg11
 ldr x2, =len11
+ldr x2, [x2]
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
+str x0, [x1]
+B ifend_8
+ifend_8:
+mov x0, #1
+mov x1, #1
+mov x2, #0
+cmp x0, #0
+beq logic_end_1
+cmp x1, #0
+beq logic_end_1
+mov x2, #1
+b logic_end_1
+logic_end_1:
+cmp x2, #0
+beq ifend_9
+mov x0, #1
+ldr x1, =msg12
+ldr x2, =len12
+ldr x2, [x2]
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
+str x0, [x1]
+B ifend_9
+ifend_9:
+mov x0, #0
+mov x1, #0
+mov x2, #1
+cmp x0, #0
+bne logic_true_2
+cmp x1, #0
+bne logic_true_2
+mov x2, #0
+b logic_end_2
+logic_true_2:
+mov x2, #1
+logic_end_2:
+mov x0, x2
+mov x2, #0
+cmp x0, #0
+beq not_true_1
+b not_end_1
+not_true_1:
+mov x2, #1
+not_end_1:
+cmp x2, #0
+beq ifend_10
+mov x0, #1
+ldr x1, =msg13
+ldr x2, =len13
+ldr x2, [x2]
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+ldr x1, =puntos
+ldr x0, [x1]
+mov x2, #1
+add x0, x0, x2
+str x0, [x1]
+B ifend_10
+ifend_10:
+mov x0, #42
+ldr x1, =buffer
+bl int_to_ascii
+mov x2, x0
+ldr x1, =buffer
+mov x0, #1
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg14
+ldr x2, =len14
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -436,548 +430,25 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
-mov x0, 88
+mov x0, #1
+ldr x1, =msg15
+ldr x2, =len15
+ldr x2, [x2]
+mov w8, #64
+svc #0
+ldr x1, =puntos
+ldr x0, [x1]
 ldr x1, =buffer
-bl rune_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 5
-mov x1, 3
-cmp x0, x1
-mov x2, #0
-bgt cmp_true_1
-b cmp_end_1
-cmp_true_1:
-mov x2, #1
-cmp_end_1:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 8
-mov x1, 17
-cmp x0, x1
-mov x2, #0
-bgt cmp_true_2
-b cmp_end_2
-cmp_true_2:
-mov x2, #1
-cmp_end_2:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 5
-mov x1, 5
-cmp x0, x1
-mov x2, #0
-bge cmp_true_3
-b cmp_end_3
-cmp_true_3:
-mov x2, #1
-cmp_end_3:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 5
-mov x1, 5
-cmp x0, x1
-mov x2, #0
-ble cmp_true_4
-b cmp_end_4
-cmp_true_4:
-mov x2, #1
-cmp_end_4:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 5
-mov x1, 4
-cmp x0, x1
-mov x2, #0
-ble cmp_true_5
-b cmp_end_5
-cmp_true_5:
-mov x2, #1
-cmp_end_5:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 5
-mov x1, 4
-cmp x0, x1
-mov x2, #0
-blt cmp_true_6
-b cmp_end_6
-cmp_true_6:
-mov x2, #1
-cmp_end_6:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x0, =cmp_float_left_12
-ldr d0, [x0]
-ldr x1, =cmp_float_right_13
-ldr d1, [x1]
-fcmp d0, d1
-mov x2, #0
-blt cmp_true_7
-b cmp_end_7
-cmp_true_7:
-mov x2, #1
-cmp_end_7:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x0, =cmp_float_left_14
-ldr d0, [x0]
-ldr x1, =cmp_float_right_15
-ldr d1, [x1]
-fcmp d0, d1
-mov x2, #0
-bgt cmp_true_8
-b cmp_end_8
-cmp_true_8:
-mov x2, #1
-cmp_end_8:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x0, =cmp_float_left_16
-ldr d0, [x0]
-ldr x1, =cmp_float_right_17
-ldr d1, [x1]
-fcmp d0, d1
-mov x2, #0
-bge cmp_true_9
-b cmp_end_9
-cmp_true_9:
-mov x2, #1
-cmp_end_9:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 5
-mov x1, 5
-cmp x0, x1
-mov x2, #0
-beq cmp_eq_true_1
-b cmp_eq_end_1
-cmp_eq_true_1:
-mov x2, #1
-cmp_eq_end_1:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, 5
-mov x1, 3
-cmp x0, x1
-mov x2, #0
-bne cmp_eq_true_2
-b cmp_eq_end_2
-cmp_eq_true_2:
-mov x2, #1
-cmp_eq_end_2:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x0, =cmp_eq_float_left_18
-ldr d0, [x0]
-ldr x1, =cmp_eq_float_right_19
-ldr d1, [x1]
-fcmp d0, d1
-mov x2, #0
-beq cmp_eq_true_3
-b cmp_eq_end_3
-cmp_eq_true_3:
-mov x2, #1
-cmp_eq_end_3:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x0, =cmp_eq_float_left_20
-ldr d0, [x0]
-ldr x1, =cmp_eq_float_right_21
-ldr d1, [x1]
-fcmp d0, d1
-mov x2, #0
-beq cmp_eq_true_4
-b cmp_eq_end_4
-cmp_eq_true_4:
-mov x2, #1
-cmp_eq_end_4:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x0, =cmp_eq_float_left_22
-ldr d0, [x0]
-ldr x1, =cmp_eq_float_right_23
-ldr d1, [x1]
-fcmp d0, d1
-mov x2, #0
-beq cmp_eq_true_5
-b cmp_eq_end_5
-cmp_eq_true_5:
-mov x2, #1
-cmp_eq_end_5:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x0, =cmp_eq_float_left_24
-ldr d0, [x0]
-ldr x1, =cmp_eq_float_right_25
-ldr d1, [x1]
-fcmp d0, d1
-mov x2, #0
-bne cmp_eq_true_6
-b cmp_eq_end_6
-cmp_eq_true_6:
-mov x2, #1
-cmp_eq_end_6:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #1
-mov x1, #0
-mov x2, #0
-cmp x0, #0
-beq logic_end_1
-cmp x1, #0
-beq logic_end_1
-mov x2, #1
-b logic_end_1
-logic_end_1:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #1
-mov x1, #0
-mov x2, #1
-cmp x0, #0
-bne logic_true_2
-cmp x1, #0
-bne logic_true_2
-mov x2, #0
-b logic_end_2
-logic_true_2:
-mov x2, #1
-logic_end_2:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #0
-mov x1, #0
-mov x2, #0
-cmp x0, #0
-beq logic_end_3
-cmp x1, #0
-beq logic_end_3
-mov x2, #1
-b logic_end_3
-logic_end_3:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #1
-mov x1, #1
-mov x2, #0
-cmp x0, #0
-beq logic_end_4
-cmp x1, #0
-beq logic_end_4
-mov x2, #1
-b logic_end_4
-logic_end_4:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #0
-mov x1, #0
-mov x2, #1
-cmp x0, #0
-bne logic_true_5
-cmp x1, #0
-bne logic_true_5
-mov x2, #0
-b logic_end_5
-logic_true_5:
-mov x2, #1
-logic_end_5:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #1
-mov x2, #0
-cmp x0, #0
-beq not_true_1
-b not_end_1
-not_true_1:
-mov x2, #1
-not_end_1:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-mov x0, #0
-mov x2, #0
-cmp x0, #0
-beq not_true_2
-b not_end_2
-not_true_2:
-mov x2, #1
-not_end_2:
-mov x0, x2
-bl bool_to_ascii
-mov x2, x0
-mov x1, x1
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x1, =buffer
-mov w3, #45
-strb w3, [x1], #1
-mov x0, #5
 bl int_to_ascii
-add x2, x0, #1
-ldr x1, =buffer
-mov x0, #1
-mov w8, #64
-svc #0
-mov x0, #1
-ldr x1, =msg_nl
-ldr x2, =len_nl
-ldr x2, [x2]
-mov w8, #64
-svc #0
-ldr x1, =float_literal_26
-ldr d0, [x1]
-ldr x1, =buffer
-bl float_to_ascii
 mov x2, x0
 ldr x1, =buffer
 mov x0, #1
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg16
+ldr x2, =len16
+ldr x2, [x2]
 mov w8, #64
 svc #0
 mov x0, #1
@@ -1035,84 +506,6 @@ reverse_inplace_done:
     ret
 
 
-float_to_ascii:
-    // ✅ Guardar copia de d0 antes de convertirlo
-    fmov d4, d0               // ← Copia para mantener el original
-
-    // Convertir parte entera de float en d0
-    fcvtzu x0, d0             // x0 = int(d0)
-    mov x2, x1                // x2 = buffer
-    mov x3, #10
-    mov x4, #0
-    mov x5, x0                // copia para loop
-    cmp x5, #0
-    bne float_int_loop
-    mov w6, #'0'
-    strb w6, [x2], #1
-    mov x4, #1
-    b float_int_done
-
-float_int_loop:
-    udiv x6, x5, x3
-    msub x7, x6, x3, x5
-    add w7, w7, #'0'
-    strb w7, [x2], #1
-    mov x5, x6
-    add x4, x4, #1
-    cmp x5, #0
-    bne float_int_loop
-
-float_int_done:
-    sub x2, x2, x4
-    mov x5, x4
-    mov x6, #0
-
-float_reverse_loop:
-    cmp x6, x5
-    bge float_reverse_done
-    add x7, x2, x6
-    sub x8, x2, x6
-    add x8, x8, x5
-    sub x8, x8, #1
-    ldrb w9, [x7]
-    ldrb w10, [x8]
-    strb w10, [x7]
-    strb w9, [x8]
-    add x6, x6, #1
-    cmp x6, x5, lsr #1
-    blt float_reverse_loop
-
-float_reverse_done:
-    add x1, x2, x5
-    mov w6, #'.'
-    strb w6, [x1], #1
-
-    // ✅ Calcular parte decimal usando d4 (no d0, ya destruido)
-    scvtf d1, x0
-    fsub d2, d4, d1
-    ldr x7, =float_100
-    ldr d3, [x7]
-    fmul d2, d2, d3
-    fcvtzu x0, d2
-
-    // Convertir dos dígitos decimales
-    mov x3, #10
-    udiv x4, x0, x3
-    msub x5, x4, x3, x0
-    add w4, w4, #'0'
-    add w5, w5, #'0'
-    strb w4, [x1], #1
-    strb w5, [x1], #1
-
-    // Fin de cadena
-    mov w6, #0
-    strb w6, [x1]
-
-    sub x0, x1, x2      // x0 = longitud
-    ret
-
-
-
 bool_to_ascii:
     cmp x0, #1
     beq bool_true
@@ -1128,20 +521,11 @@ bool_true:
     mov x1, x2
     ret
 
-
-rune_to_ascii:
-    mov x2, x1
-    strb w0, [x2]
-    mov w3, #0
-    strb w3, [x2, #1]
-    mov x0, #1
-    ret
-
-// Finalizar programa
+# Finalizar programa
 
 
-// Foreign functions
+# Foreign functions
 
 
-//libreria estandar
+# libreria estandar
 // Funciones estándar aquí

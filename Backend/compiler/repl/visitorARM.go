@@ -330,6 +330,14 @@ func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) inte
 func (v *ARMVisitor) VisitId(ctx *parser.IdContext) interface{} {
 	id := ctx.GetText()
 	if entry, ok := v.VarMap[id]; ok {
+
+		if entry.Tipo == "float64" {
+            // NO generes instrucciones aquí para floats
+            return PrintValue{
+                Tipo:  entry.Tipo,
+                Valor: entry.Valor,
+            }
+        }
 		// Forzar que la comparación use el valor real desde memoria
 		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
 		v.Generator.AddInstruction("ldr x0, [x1]")
@@ -785,7 +793,7 @@ func (v *ARMVisitor) VisitRelacionales(ctx *parser.RelacionalesContext) interfac
 	}
 
 	// Si no es comparación de enteros, retorna false para evitar nil
-	return PrintValue{Tipo: "bool", Valor: "false"}
+	return PrintValue{Tipo: "bool", Valor: "x2"}
 }
 
 func (v *ARMVisitor) VisitIgualdad(ctx *parser.IgualdadContext) interface{} {
@@ -881,11 +889,11 @@ func (v *ARMVisitor) VisitIgualdad(ctx *parser.IgualdadContext) interface{} {
 		if result {
 			return PrintValue{Tipo: "bool", Valor: "true"}
 		}
-		return PrintValue{Tipo: "bool", Valor: "false"}
+		return PrintValue{Tipo: "bool", Valor: "x2"}
 	}
 
 	// Si no es comparación válida, retorna false
-	return PrintValue{Tipo: "bool", Valor: "false"}
+	return PrintValue{Tipo: "bool", Valor: "x2"}
 }
 
 func (v *ARMVisitor) VisitOPERADORESLOGICOS(ctx *parser.OPERADORESLOGICOSContext) interface{} {
@@ -950,11 +958,26 @@ func (v *ARMVisitor) VisitOPERADORESLOGICOS(ctx *parser.OPERADORESLOGICOSContext
 	}
 
 	// Si no son booleanos, retorna false
-	return PrintValue{Tipo: "bool", Valor: "false"}
+	fmt.Println("[DEBUG] VisitOPERADORESLOGICOS: valores no son booleanos, retornando false.")
+	return PrintValue{Tipo: "bool", Valor: "x2"}
+}
+func (v *ARMVisitor) VisitParentesisexpre(ctx *parser.ParentesisexpreContext) interface{} {
+    return v.Visit(ctx.Expresion())
 }
 
+// (Opcional) si usas corchetes para grouping
+func (v *ARMVisitor) VisitCorchetesexpre(ctx *parser.CorchetesexpreContext) interface{} {
+    return v.Visit(ctx.Expresion())
+}
 func (v *ARMVisitor) VisitUnario(ctx *parser.UnarioContext) interface{} {
-	val := v.Visit(ctx.Expresion()).(PrintValue)
+	
+	valRaw := v.Visit(ctx.Expresion())
+	val, ok := valRaw.(PrintValue)
+	if !ok {
+        fmt.Println("[ERROR] VisitUnario: valor no es PrintValue o es nil:", valRaw)
+        // Puedes retornar un valor por defecto o nil, según tu lógica
+        return PrintValue{Tipo: "bool", Valor: "false"}
+    }
 	op := ctx.GetOp().GetText()
 
 	switch op {
@@ -986,6 +1009,8 @@ func (v *ARMVisitor) VisitUnario(ctx *parser.UnarioContext) interface{} {
 			return PrintValue{Tipo: "bool", Valor: "x2"}
 		}
 		// Si no es booleano, retorna false
+		fmt.Println("[DEBUG] VisitUnario valor:", val.Valor)
+		fmt.Print("[ERROR] VisitUnario: operación ! solo válida para booleanos, retornando false.\n")
 		return PrintValue{Tipo: "bool", Valor: "false"}
 
 	case "-":

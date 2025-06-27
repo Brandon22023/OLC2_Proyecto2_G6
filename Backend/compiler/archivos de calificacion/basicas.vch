@@ -17,7 +17,6 @@ fn main() {
 		print("OK decimal")
 		puntos += 1
 	}
-
 	if texto == "Hola, mundo!" {
 		print("OK texto")
 		puntos += 1
@@ -62,7 +61,7 @@ fn main() {
 
 	if !(false || false) {
 		print("OK lógica OR negada")
-		//puntos += 1
+		puntos += 1
 	}
 
 	// 6. Print básicos
@@ -71,5 +70,5 @@ fn main() {
 	print(true)
 
 	// Resultado final
-	print("Puntos obtenidos: $puntos / 11")
+	print("Puntos obtenidos: ", puntos, " / 10")
 }
