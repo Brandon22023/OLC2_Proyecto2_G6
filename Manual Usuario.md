@@ -470,3 +470,6 @@ Verifica que tengas permisos de ejecución y que tu sistema operativo sea compat
 
 - ahora el arbol, aunque si esta algo grande
 ![alt text](image-7.png)
+
+- ademas de eso se crea un archivo.S en el cual crea un archivo en codigo assembler donde uno lo puede ejecutar (se cargo otro archivo debido a que esta es la fase 2 del proyecto)
+![alt text](image-8.png)
