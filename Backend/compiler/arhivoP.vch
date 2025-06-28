@@ -75,7 +75,7 @@ fn main() {
 	}
 
 	// 4. For clásico
-	/*mut puntos_for int = 0
+	mut puntos_for int = 0
 	mut suma2 int = 0
 	for x = 0; x < 5; x++ {
 		print(x)
@@ -91,7 +91,7 @@ fn main() {
 	for z = 0; z < 2; z++ {
 		print(z)
 	}
-	puntos_for += 2*/
+	puntos_for += 2
 
 	// 5. Switch real
 	mut puntos_case int = 0
@@ -120,7 +120,7 @@ fn main() {
 	// 6. Break
 	mut puntos_break int = 0
 	mut suma3 int = 0
-	for n := 0; n < 10; n++ {
+	for n = 0; n < 10; n++ {
 		if n == 5 {
 			break
 		}
@@ -131,7 +131,7 @@ fn main() {
 		puntos_break += 3
 		print("OK suma3 == 10")
 	}
-
+	
 	// 7. Continue
 	mut puntos_continue int = 0
 	mut suma_pares int = 0
@@ -145,9 +145,9 @@ fn main() {
 	if suma_pares == 20 {
 		puntos_continue += 3
 		print("OK suma_pares == 20")
-	}
+	}*/
 
 	// Total
-	puntos = puntos_entornos + puntos_if + puntos_while + puntos_for + puntos_case + puntos_break + puntos_continue
-	print("Puntos totales:", puntos, "/ 26")*/
+	puntos = puntos_entornos + puntos_if + puntos_while + puntos_for + puntos_case
+	print("Puntos totales:", puntos, "/ 26")
 }

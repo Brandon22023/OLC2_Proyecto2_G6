@@ -16,68 +16,84 @@ puntos: .quad 0
 puntos_entornos: .quad 0
 .align 3
 a: .quad 10
-msg1: .ascii "a ="
-len1: .quad . - msg1
-msg2: .ascii "OK a = 10"
-len2: .quad . - msg2
+msg_print_1: .ascii "a ="
+len_print_1: .quad . - msg_print_1
+msg_print_2: .ascii "OK a = 10"
+len_print_2: .quad . - msg_print_2
 .align 3
 b: .quad 10
-msg3: .ascii "b ="
-len3: .quad . - msg3
-msg4: .ascii "OK b = 20"
-len4: .quad . - msg4
+msg_print_3: .ascii "b ="
+len_print_3: .quad . - msg_print_3
+msg_print_4: .ascii "OK b = 20"
+len_print_4: .quad . - msg_print_4
 .align 3
 c: .quad 10
 .align 3
 d: .quad 10
-msg5: .ascii "c ="
-len5: .quad . - msg5
-msg6: .ascii "d ="
-len6: .quad . - msg6
-msg7: .ascii "OK c = 30"
-len7: .quad . - msg7
+msg_print_5: .ascii "c ="
+len_print_5: .quad . - msg_print_5
+msg_print_6: .ascii "d ="
+len_print_6: .quad . - msg_print_6
+msg_print_7: .ascii "OK c = 30"
+len_print_7: .quad . - msg_print_7
 .align 3
 puntos_if: .quad 0
-msg8: .ascii "OK true"
-len8: .quad . - msg8
-msg9: .ascii "OK 1 == 1"
-len9: .quad . - msg9
-msg10: .ascii "OK 2 > 1"
-len10: .quad . - msg10
+msg_print_8: .ascii "OK true"
+len_print_8: .quad . - msg_print_8
+msg_print_9: .ascii "OK 1 == 1"
+len_print_9: .quad . - msg_print_9
+msg_print_10: .ascii "OK 2 > 1"
+len_print_10: .quad . - msg_print_10
 .align 3
 puntos_while: .quad 0
 .align 3
 i: .quad 0
 .align 3
 suma1: .quad 0
-msg11: .ascii "OK suma1 == 10"
-len11: .quad . - msg11
-msg12: .ascii "OK i == 5"
-len12: .quad . - msg12
+msg_print_11: .ascii "OK suma1 == 10"
+len_print_11: .quad . - msg_print_11
+msg_print_12: .ascii "OK i == 5"
+len_print_12: .quad . - msg_print_12
 .align 3
 j: .quad 3
 .align 3
 k: .quad 0
 .align 3
+puntos_for: .quad 0
+.align 3
+suma2: .quad 0
+.align 3
+x: .quad 0
+msg_print_13: .ascii "OK suma2 == 10"
+len_print_13: .quad . - msg_print_13
+.align 3
+y: .quad 0
+.align 3
+z: .quad 0
+.align 3
 puntos_case: .quad 0
 .align 3
 dia: .quad 1
-msg13: .ascii "Lunes"
-len13: .quad . - msg13
-msg14: .ascii "Martes"
-len14: .quad . - msg14
-msg15: .ascii "Miércoles"
-len15: .quad . - msg15
-msg16: .ascii "Jueves"
-len16: .quad . - msg16
-msg17: .ascii "Viernes"
-len17: .quad . - msg17
-msg18: .ascii "Sábado"
-len18: .quad . - msg18
-msg19: .ascii "Domingo"
-len19: .quad . - msg19
-msg20: .ascii "Día inválido"
-len20: .quad . - msg20
+msg_print_14: .ascii "Lunes"
+len_print_14: .quad . - msg_print_14
+msg_print_15: .ascii "Martes"
+len_print_15: .quad . - msg_print_15
+msg_print_16: .ascii "Miércoles"
+len_print_16: .quad . - msg_print_16
+msg_print_17: .ascii "Jueves"
+len_print_17: .quad . - msg_print_17
+msg_print_18: .ascii "Viernes"
+len_print_18: .quad . - msg_print_18
+msg_print_19: .ascii "Sábado"
+len_print_19: .quad . - msg_print_19
+msg_print_20: .ascii "Domingo"
+len_print_20: .quad . - msg_print_20
+msg_print_21: .ascii "Día inválido"
+len_print_21: .quad . - msg_print_21
+msg_print_22: .ascii "Puntos totales:"
+len_print_22: .quad . - msg_print_22
+msg_print_23: .ascii "/ 26"
+len_print_23: .quad . - msg_print_23
 .text
 .global malloc
 malloc:
@@ -90,8 +106,8 @@ malloc:
 _start:
     adr x10, heap
 mov x0, #1
-ldr x1, =msg1
-ldr x2, =len1
+ldr x1, =msg_print_1
+ldr x2, =len_print_1
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -123,14 +139,14 @@ mov x2, #1
 cmp_eq_end_1:
 cmp x2, #0
 beq ifend_1
+mov x2, #1
 ldr x1, =puntos_entornos
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg2
-ldr x2, =len2
+ldr x1, =msg_print_2
+ldr x2, =len_print_2
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -146,8 +162,8 @@ ldr x1, =b
 mov x0, #20
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg3
-ldr x2, =len3
+ldr x1, =msg_print_3
+ldr x2, =len_print_3
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -179,14 +195,14 @@ mov x2, #1
 cmp_eq_end_2:
 cmp x2, #0
 beq ifend_2
+mov x2, #1
 ldr x1, =puntos_entornos
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg4
-ldr x2, =len4
+ldr x1, =msg_print_4
+ldr x2, =len_print_4
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -202,8 +218,8 @@ ldr x1, =c
 mov x0, #30
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg5
-ldr x2, =len5
+ldr x1, =msg_print_5
+ldr x2, =len_print_5
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -223,8 +239,8 @@ ldr x2, [x2]
 mov w8, #64
 svc #0
 mov x0, #1
-ldr x1, =msg6
-ldr x2, =len6
+ldr x1, =msg_print_6
+ldr x2, =len_print_6
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -256,14 +272,14 @@ mov x2, #1
 cmp_eq_end_3:
 cmp x2, #0
 beq ifend_3
+mov x2, #1
 ldr x1, =puntos_entornos
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg7
-ldr x2, =len7
+ldr x1, =msg_print_7
+ldr x2, =len_print_7
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -275,14 +291,14 @@ mov w8, #64
 svc #0
 B ifend_3
 ifend_3:
+mov x2, #1
 ldr x1, =puntos_if
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg8
-ldr x2, =len8
+ldr x1, =msg_print_8
+ldr x2, =len_print_8
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -305,14 +321,14 @@ mov x2, #1
 cmp_eq_end_4:
 cmp x2, #0
 beq ifend_5
+mov x2, #1
 ldr x1, =puntos_if
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg9
-ldr x2, =len9
+ldr x1, =msg_print_9
+ldr x2, =len_print_9
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -335,14 +351,14 @@ mov x2, #1
 cmp_end_1:
 cmp x2, #0
 beq ifend_6
+mov x2, #1
 ldr x1, =puntos_if
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg10
-ldr x2, =len10
+ldr x1, =msg_print_10
+ldr x2, =len_print_10
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -373,14 +389,14 @@ mov w8, #64
 svc #0
 ldr x1, =i
 ldr x0, [x1]
+mov x2, x0
 ldr x1, =suma1
 ldr x0, [x1]
-mov x2, x0
 add x0, x0, x2
 str x0, [x1]
+mov x2, #1
 ldr x1, =i
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 for_continue_1:
@@ -413,14 +429,14 @@ mov x2, #1
 cmp_eq_end_5:
 cmp x2, #0
 beq ifend_7
+mov x2, #1
 ldr x1, =puntos_while
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg11
-ldr x2, =len11
+ldr x1, =msg_print_11
+ldr x2, =len_print_11
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -445,14 +461,14 @@ mov x2, #1
 cmp_eq_end_6:
 cmp x2, #0
 beq ifend_8
+mov x2, #1
 ldr x1, =puntos_while
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 mov x0, #1
-ldr x1, =msg12
-ldr x2, =len12
+ldr x1, =msg_print_12
+ldr x2, =len_print_12
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -481,9 +497,9 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
+mov x2, #1
 ldr x1, =j
 ldr x0, [x1]
-mov x2, #1
 sub x0, x0, x2
 str x0, [x1]
 for_continue_2:
@@ -520,9 +536,9 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
+mov x2, #2
 ldr x1, =k
 ldr x0, [x1]
-mov x2, #2
 add x0, x0, x2
 str x0, [x1]
 for_continue_3:
@@ -542,6 +558,173 @@ cmp x2, #0
 beq for_end_3
 B for_start_3
 for_end_3:
+ldr x1, =x
+mov x0, 0
+str x0, [x1]
+B for_cond_4
+for_start_4:
+ldr x1, =x
+ldr x0, [x1]
+ldr x1, =buffer
+bl int_to_ascii
+mov x2, x0
+ldr x1, =buffer
+mov x0, #1
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+ldr x1, =x
+ldr x0, [x1]
+mov x2, x0
+ldr x1, =suma2
+ldr x0, [x1]
+add x0, x0, x2
+str x0, [x1]
+for_continue_4:
+ldr x1, =x
+ldr x0, [x1]
+add x0, x0, #1
+str x0, [x1]
+for_cond_4:
+ldr x1, =x
+ldr x0, [x1]
+mov x0, x0
+mov x1, 5
+cmp x0, x1
+mov x2, #0
+blt cmp_true_5
+b cmp_end_5
+cmp_true_5:
+mov x2, #1
+cmp_end_5:
+cmp x2, #0
+beq for_end_4
+B for_start_4
+for_end_4:
+ldr x1, =suma2
+ldr x0, [x1]
+mov x0, x0
+mov x1, 10
+cmp x0, x1
+mov x2, #0
+beq cmp_eq_true_7
+b cmp_eq_end_7
+cmp_eq_true_7:
+mov x2, #1
+cmp_eq_end_7:
+cmp x2, #0
+beq ifend_9
+mov x2, #1
+ldr x1, =puntos_for
+ldr x0, [x1]
+add x0, x0, x2
+str x0, [x1]
+mov x0, #1
+ldr x1, =msg_print_13
+ldr x2, =len_print_13
+ldr x2, [x2]
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+B ifend_9
+ifend_9:
+ldr x1, =y
+mov x0, 0
+str x0, [x1]
+B for_cond_5
+for_start_5:
+ldr x1, =y
+ldr x0, [x1]
+ldr x1, =buffer
+bl int_to_ascii
+mov x2, x0
+ldr x1, =buffer
+mov x0, #1
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+for_continue_5:
+ldr x1, =y
+ldr x0, [x1]
+add x0, x0, #1
+str x0, [x1]
+for_cond_5:
+ldr x1, =y
+ldr x0, [x1]
+mov x0, x0
+mov x1, 3
+cmp x0, x1
+mov x2, #0
+blt cmp_true_6
+b cmp_end_6
+cmp_true_6:
+mov x2, #1
+cmp_end_6:
+cmp x2, #0
+beq for_end_5
+B for_start_5
+for_end_5:
+ldr x1, =z
+mov x0, 0
+str x0, [x1]
+B for_cond_6
+for_start_6:
+ldr x1, =z
+ldr x0, [x1]
+ldr x1, =buffer
+bl int_to_ascii
+mov x2, x0
+ldr x1, =buffer
+mov x0, #1
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+for_continue_6:
+ldr x1, =z
+ldr x0, [x1]
+add x0, x0, #1
+str x0, [x1]
+for_cond_6:
+ldr x1, =z
+ldr x0, [x1]
+mov x0, x0
+mov x1, 2
+cmp x0, x1
+mov x2, #0
+blt cmp_true_7
+b cmp_end_7
+cmp_true_7:
+mov x2, #1
+cmp_end_7:
+cmp x2, #0
+beq for_end_6
+B for_start_6
+for_end_6:
+mov x2, #2
+ldr x1, =puntos_for
+ldr x0, [x1]
+add x0, x0, x2
+str x0, [x1]
 ldr x1, =dia
 ldr x0, [x1]
 mov x0, x0
@@ -569,8 +752,8 @@ beq case_6_1
 B switch_default_1
 case_0_1:
 mov x0, #1
-ldr x1, =msg13
-ldr x2, =len13
+ldr x1, =msg_print_14
+ldr x2, =len_print_14
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -580,16 +763,16 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
+mov x2, #1
 ldr x1, =puntos_case
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 B switch_end_1
 case_1_1:
 mov x0, #1
-ldr x1, =msg14
-ldr x2, =len14
+ldr x1, =msg_print_15
+ldr x2, =len_print_15
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -602,8 +785,8 @@ svc #0
 B switch_end_1
 case_2_1:
 mov x0, #1
-ldr x1, =msg15
-ldr x2, =len15
+ldr x1, =msg_print_16
+ldr x2, =len_print_16
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -613,16 +796,16 @@ ldr x2, =len_nl
 ldr x2, [x2]
 mov w8, #64
 svc #0
+mov x2, #1
 ldr x1, =puntos_case
 ldr x0, [x1]
-mov x2, #1
 add x0, x0, x2
 str x0, [x1]
 B switch_end_1
 case_3_1:
 mov x0, #1
-ldr x1, =msg16
-ldr x2, =len16
+ldr x1, =msg_print_17
+ldr x2, =len_print_17
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -635,8 +818,8 @@ svc #0
 B switch_end_1
 case_4_1:
 mov x0, #1
-ldr x1, =msg17
-ldr x2, =len17
+ldr x1, =msg_print_18
+ldr x2, =len_print_18
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -649,8 +832,8 @@ svc #0
 B switch_end_1
 case_5_1:
 mov x0, #1
-ldr x1, =msg18
-ldr x2, =len18
+ldr x1, =msg_print_19
+ldr x2, =len_print_19
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -663,8 +846,8 @@ svc #0
 B switch_end_1
 case_6_1:
 mov x0, #1
-ldr x1, =msg19
-ldr x2, =len19
+ldr x1, =msg_print_20
+ldr x2, =len_print_20
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -677,8 +860,8 @@ svc #0
 B switch_end_1
 switch_default_1:
 mov x0, #1
-ldr x1, =msg20
-ldr x2, =len20
+ldr x1, =msg_print_21
+ldr x2, =len_print_21
 ldr x2, [x2]
 mov w8, #64
 svc #0
@@ -689,10 +872,46 @@ ldr x2, [x2]
 mov w8, #64
 svc #0
 switch_end_1:
-    # Salida final
-mov x0, #0
-mov w8, #93
+ldr x1, =puntos_entornos
+ldr x0, [x1]
+ldr x1, =puntos_if
+ldr x0, [x1]
+ldr x1, =puntos_while
+ldr x0, [x1]
+ldr x1, =puntos_for
+ldr x0, [x1]
+ldr x1, =puntos_case
+ldr x0, [x1]
+mov x0, #1
+ldr x1, =msg_print_22
+ldr x2, =len_print_22
+ldr x2, [x2]
+mov w8, #64
 svc #0
+ldr x1, =puntos
+ldr x0, [x1]
+ldr x1, =buffer
+bl int_to_ascii
+mov x2, x0
+ldr x1, =buffer
+mov x0, #1
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_print_23
+ldr x2, =len_print_23
+ldr x2, [x2]
+mov w8, #64
+svc #0
+mov x0, #1
+ldr x1, =msg_nl
+ldr x2, =len_nl
+ldr x2, [x2]
+mov w8, #64
+svc #0
+    mov x0, #0
+    mov w8, #93
+    svc #0
 
 strcmp:
     // Guardar los punteros en registros temporales

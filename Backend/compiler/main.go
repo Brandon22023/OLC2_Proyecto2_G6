@@ -140,17 +140,7 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		}
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
-}
-*/
-
-
-
-
-
-
-
-
-
+}*/
 
 //--------------aqui se divide el código para el servidor web----------------
 
@@ -178,53 +168,52 @@ import (
 
 func main() {
 	var absRuta string
-    app := fiber.New()
+	app := fiber.New()
 
-    app.Post("/analizar", func(c *fiber.Ctx) error {
-        inputCode := string(c.Body())
+	app.Post("/analizar", func(c *fiber.Ctx) error {
+		inputCode := string(c.Body())
 
 		var buf bytes.Buffer
 		old := os.Stdout
 		r, w, _ := os.Pipe()
 		os.Stdout = w
 
-        // 1. Análisis Léxico
-        lexicalErrorListener := errors.NewLexicalErrorListener()
-        lexer := compiler.NewVlangLexer(antlr.NewInputStream(inputCode))
-        lexer.RemoveErrorListeners()
-        lexer.AddErrorListener(lexicalErrorListener)
+		// 1. Análisis Léxico
+		lexicalErrorListener := errors.NewLexicalErrorListener()
+		lexer := compiler.NewVlangLexer(antlr.NewInputStream(inputCode))
+		lexer.RemoveErrorListeners()
+		lexer.AddErrorListener(lexicalErrorListener)
 
-        // 2. Tokens
-        stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
+		// 2. Tokens
+		stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
 
-        // 3. Parser + errores sintácticos
-        parser := compiler.NewVlangParser(stream)
-        parser.BuildParseTrees = true
-        syntaxErrorListener := errors.NewSyntaxErrorListener(lexicalErrorListener.ErrorTable)
-        parser.RemoveErrorListeners()
-        parser.SetErrorHandler(errors.NewCustomErrorStrategy())
-        parser.AddErrorListener(syntaxErrorListener)
+		// 3. Parser + errores sintácticos
+		parser := compiler.NewVlangParser(stream)
+		parser.BuildParseTrees = true
+		syntaxErrorListener := errors.NewSyntaxErrorListener(lexicalErrorListener.ErrorTable)
+		parser.RemoveErrorListeners()
+		parser.SetErrorHandler(errors.NewCustomErrorStrategy())
+		parser.AddErrorListener(syntaxErrorListener)
 
-        arbolito := parser.Programa()
+		arbolito := parser.Programa()
 		// Imprime el árbol sintáctico para depuración
 		//PrintVerticalTree(arbolito, parser.RuleNames)
 		//----------------arm
 
-
 		//----------------------
-        visitor := repl.NewReplVisitor()
+		visitor := repl.NewReplVisitor()
 
-        visitor.Visit(arbolito)
+		visitor.Visit(arbolito)
 
 		// 1. Crear el generador y el visitor ARM
 		generator := repl.NewArmGenerator()
 		armVisitor := &repl.ARMVisitor{
-			Generator: generator,
+			Generator:  generator,
 			ScopeTrace: visitor.ScopeTrace,
 			FuncLabels: make(map[string]string),
 		}
 		armVisitor.Visit(arbolito)
-        generator.UsesIntToAscii = armVisitor.UsesIntToAscii
+		generator.UsesIntToAscii = armVisitor.UsesIntToAscii
 		asmCode := generator.ToString()
 		assemblerDir := "assembler"
 		os.MkdirAll(assemblerDir, 0755) // Crea la carpeta si no existe
@@ -236,11 +225,10 @@ func main() {
 			fmt.Println("Archivo Assembly generado correctamente en:", asmPath)
 		}
 
-
 		//fmt.Println("====aqui imprimire las variables de todos los entornos=========")
 		//visitor.ScopeTrace.GlobalScope.PrintScopeVariables(0)
 
-        // Cierra y recupera la salida
+		// Cierra y recupera la salida
 		w.Close()
 		os.Stdout = old
 		buf.ReadFrom(r)
@@ -275,30 +263,26 @@ func main() {
 		os.MkdirAll("reportes", 0755)
 		_ = errors.SaveErrorsHTML(errorTable, rutaErrores)
 
-
-
 		// Si no hay salida, muestra un mensaje por defecto
 		if output == "" {
 			output = "No hubo salida del programa."
 		}
 		os.WriteFile("ultimo_codigo.vch", []byte(inputCode), 0644)
 
-
-
-        return c.SendString(output)
-    })
+		return c.SendString(output)
+	})
 
 	app.Get("/reporte-simbolos", func(c *fiber.Ctx) error {
-			ruta := filepath.Join("reportes", "tabla_simbolos.html")
-			fmt.Println("Ruta del reporte que se envia al frontend:", absRuta)
-			absRuta, err := filepath.Abs(ruta)
-			if err != nil {
-				return c.Status(500).SendString("No se pudo obtener la ruta del reporte")
-			}
+		ruta := filepath.Join("reportes", "tabla_simbolos.html")
+		fmt.Println("Ruta del reporte que se envia al frontend:", absRuta)
+		absRuta, err := filepath.Abs(ruta)
+		if err != nil {
+			return c.Status(500).SendString("No se pudo obtener la ruta del reporte")
+		}
 
-    	    // Abre el HTML en el navegador del servidor
-    		go symbols.OpenHTML(absRuta)
-			return c.SendString(absRuta)
+		// Abre el HTML en el navegador del servidor
+		go symbols.OpenHTML(absRuta)
+		return c.SendString(absRuta)
 	})
 
 	app.Get("/reporte-cst", func(c *fiber.Ctx) error {
@@ -329,11 +313,8 @@ func main() {
 		return c.SendString(absRuta)
 	})
 
-    app.Listen(":3000")
+	app.Listen(":3000")
 }
-
-
-
 
 // Funciones para visualizar nuestro arbol
 func PrintVerticalTree(node antlr.Tree, ruleNames []string) {
@@ -371,4 +352,3 @@ func printVerticalNode(node antlr.Tree, ruleNames []string, prefix string, isLas
 		printVerticalNode(child, ruleNames, newPrefix, i == childCount-1)
 	}
 }
-
