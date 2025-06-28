@@ -130,8 +130,34 @@ func (v *ARMVisitor) VisitPrograma(ctx *parser.ProgramaContext) interface{} {
 
 	return nil
 }
-
+func (v *ARMVisitor) VisitTransfersentence(ctx *parser.TransfersentenceContext) interface{} {
+    res := v.VisitChildren(ctx)
+    if ret, ok := res.(PrintValue); ok && ret.Tipo == "__return__" {
+        return ret
+    }
+    return res
+}
 func (v *ARMVisitor) VisitDeclaraciones(ctx *parser.DeclaracionesContext) interface{} {
+	txt := ctx.GetText()
+    //fmt.Println("[DEBUG] VisitDeclaraciones:", txt)
+    // Parche: si el texto empieza con "return", llama manualmente a VisitReturnStatement
+    if strings.HasPrefix(txt, "return") {
+        // Crea un contexto falso o busca el hijo correcto
+        // Si tienes acceso al hijo, llama a v.VisitReturnStatement(hijo)
+        // Si no, usa el parche del valor:
+        valor := txt[6:]
+        //fmt.Println("[DEBUG] Valor de retorno (parche desde declaraciones):", valor)
+        v.Generator.AddMov("x0", valor)
+        return PrintValue{Tipo: "__return__"}
+    }
+	if ctx.Stmt() != nil {
+        res := v.Visit(ctx.Stmt())
+        // Propaga el return especial
+        if ret, ok := res.(PrintValue); ok && ret.Tipo == "__return__" {
+            return ret
+        }
+        return res
+    }
 	if ctx.Stmt() != nil {
 		return v.Visit(ctx.Stmt())
 	}
@@ -152,7 +178,7 @@ func (v *ARMVisitor) VisitDeclaraciones(ctx *parser.DeclaracionesContext) interf
 
 func (v *ARMVisitor) VisitFuncMain(ctx *parser.FuncMainContext) interface{} {
 	v.Generator.setLabel("fn_main")
-	fmt.Println("VisitFuncMain ejecutado")
+	//fmt.Println("VisitFuncMain ejecutado")
 	for _, decl := range ctx.Block().AllDeclaraciones() {
 		v.Visit(decl)
 	}
@@ -200,7 +226,7 @@ func (v *ARMVisitor) VisitVariableDeclaration(ctx *parser.VariableDeclarationCon
 }
 
 func (v *ARMVisitor) VisitPrintStatement(ctx *parser.PrintStatementContext) interface{} {
-	fmt.Println("Entrando a VisitPrintStatement con exprs:", ctx.GetText())
+	//fmt.Println("Entrando a VisitPrintStatement con exprs:", ctx.GetText())
 	exprs := ctx.AllExpresion()
 
 	for _, expr := range exprs {
@@ -467,10 +493,12 @@ func (v *ARMVisitor) replaceVarData(id string, newValue string) {
 }
 
 func (v *ARMVisitor) VisitAsignacionLUEGO(ctx *parser.AsignacionLUEGOContext) interface{} {
+	//fmt.Println("DEBUG: Entrando a AsignacionLUEGO para:", ctx.ID().GetText())
 	id := ctx.ID().GetText()
 	expr := ctx.Expresion()
 	// Si es llamada a función
 	if expr.GetRuleContext().GetRuleIndex() == parser.VlangParserRULE_funcCall {
+		fmt.Println("DEBUG: Generando str x0, [x1] para", id)
 		v.Visit(expr) // Esto llamará a VisitFuncCall y pondrá el valor en x0
 		entry := v.VarMap[id]
 		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
@@ -634,112 +662,114 @@ func normalizeTipo(t string) string {
 }
 
 func (v *ARMVisitor) VisitVariableDeclarationImmutable(ctx *parser.VariableDeclarationImmutableContext) interface{} {
-	id := ctx.ID().GetText()
-	expr := ctx.Expresion()
-	fmt.Println("DEBUG: Entrando a VariableDeclarationImmutable para:", id)
+    //fmt.Println("DEBUG: Entrando a VariableDeclarationImmutable para:", ctx.ID().GetText())
+    id := ctx.ID().GetText()
+    expr := ctx.Expresion()
 
-	if ctx.ASSIGN() == nil {
-		fmt.Println("DEBUG: No hay asignación para", id)
-		return nil
-	}
+    if ctx.ASSIGN() == nil {
+        fmt.Println("DEBUG: No hay asignación para", id)
+        return nil
+    }
 
-	// Si es llamada a función
-	if expr.GetRuleContext().GetRuleIndex() == parser.VlangParserRULE_funcCall {
-		v.Visit(expr) // Esto llamará a VisitFuncCall y pondrá el valor en x0
-		tipo := "int" // Puedes mejorar esto si tienes el tipo real
-		label := id
-		v.VarMap[id] = VariableEntry{Tipo: tipo, Valor: label, Label: label}
-		v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0", label))
-		v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
-		v.Generator.AddInstruction("str x0, [x1]")
-		return nil
-	}
+    // Si la variable ya existe, tratamos esto como una asignación (NO redeclaración)
+    if entry, exists := v.VarMap[id]; exists {
+        //fmt.Println("DEBUG: Variable ya existe, tratando como asignación:", id)
+        ruleIndex := expr.GetRuleContext().GetRuleIndex()
+        if ruleIndex == parser.VlangParserRULE_funcCall || ruleIndex == parser.VlangParserRULE_llamadaFuncion {
+            v.Visit(expr)
+            v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+            v.Generator.AddInstruction("str x0, [x1]")
+            entry.Valor = "x0"
+            v.VarMap[id] = entry
+            return nil
+        }
+        val := v.Visit(expr)
+        if pv, ok := val.(PrintValue); ok {
+            tipo := normalizeTipo(pv.Tipo)
+            if tipo != entry.Tipo {
+                //fmt.Printf("ERROR: Tipo incompatible en reasignación de '%s'. Esperado '%s', recibido '%s'\n", id, entry.Tipo, tipo)
+                return nil
+            }
+            switch tipo {
+            case "int":
+                intVal := toInt(pv.Valor)
+                v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+                v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", intVal))
+                v.Generator.AddInstruction("str x0, [x1]")
+            case "bool":
+                boolVal := 0
+                if pv.Valor == "true" {
+                    boolVal = 1
+                }
+                v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+                v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", boolVal))
+                v.Generator.AddInstruction("str x0, [x1]")
+            case "float64":
+                floatBits := math.Float64bits(toFloat(pv.Valor))
+                tempLabel := v.Generator.GenerateUniqueLabel("float_temp")
+                v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", tempLabel, floatBits))
+                v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", tempLabel))
+                v.Generator.AddInstruction("ldr x0, [x0]")
+                v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
+                v.Generator.AddInstruction("str x0, [x1]")
+            case "string", "rune":
+                v.replaceVarData(id, pv.Valor)
+            }
+            entry.Valor = pv.Valor
+            v.VarMap[id] = entry
+            return nil
+        }
+        return nil
+    }
 
-	val := v.Visit(ctx.Expresion())
-	if pv, ok := val.(PrintValue); ok {
-		tipo := normalizeTipo(pv.Tipo)
+    // Si NO existe, es declaración nueva
+    ruleIndex := expr.GetRuleContext().GetRuleIndex()
+    if ruleIndex == parser.VlangParserRULE_funcCall || ruleIndex == parser.VlangParserRULE_llamadaFuncion {
+        fmt.Println("DEBUG: Generando str x0, [x1] para", id)
+        v.Visit(expr)
+        tipo := "int" // Puedes mejorar esto si tienes el tipo real
+        label := id
+        v.VarMap[id] = VariableEntry{Tipo: tipo, Valor: "x0", Label: label}
+        v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0", label))
+        v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+        v.Generator.AddInstruction("str x0, [x1]")
+        return nil
+    }
 
-		// REASIGNACIÓN
-		if entry, exists := v.VarMap[id]; exists {
-			fmt.Println("DEBUG: Reasignación detectada para:", id)
-
-			if tipo != entry.Tipo {
-				fmt.Printf("ERROR: Tipo incompatible en reasignación de '%s'. Esperado '%s', recibido '%s'\n", id, entry.Tipo, tipo)
-				return nil
-			}
-
-			switch tipo {
-			case "int":
-				intVal := toInt(pv.Valor)
-				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
-				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", intVal))
-				v.Generator.AddInstruction("str x0, [x1]")
-			case "bool":
-				boolVal := 0
-				if pv.Valor == "true" {
-					boolVal = 1
-				}
-				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
-				v.Generator.AddInstruction(fmt.Sprintf("mov x0, #%d", boolVal))
-				v.Generator.AddInstruction("str x0, [x1]")
-			case "float64":
-				floatBits := math.Float64bits(toFloat(pv.Valor))
-				tempLabel := v.Generator.GenerateUniqueLabel("float_temp")
-				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", tempLabel, floatBits))
-				v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", tempLabel))
-				v.Generator.AddInstruction("ldr x0, [x0]")
-				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", entry.Label))
-				v.Generator.AddInstruction("str x0, [x1]")
-			case "string", "rune":
-				v.replaceVarData(id, pv.Valor)
-			}
-
-			// Actualiza el valor en VarMap
-			entry.Valor = pv.Valor
-			v.VarMap[id] = entry
-			return nil
-		}
-
-		// DECLARACIÓN
-		if _, exists := v.VarMap[id]; !exists {
-			fmt.Println("DEBUG: Declaración nueva para:", id)
-
-			label := id
-			v.VarMap[id] = VariableEntry{Tipo: tipo, Valor: pv.Valor, Label: label}
-
-			switch tipo {
-			case "int":
-				val := toInt(pv.Valor)
-				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad %d", label, val))
-				v.Generator.AddData(fmt.Sprintf("len_%s: .quad 8", label))
-			case "bool":
-				val := 0
-				if pv.Valor == "true" {
-					val = 1
-				}
-				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad %d", label, val))
-				v.Generator.AddData(fmt.Sprintf("len_%s: .quad 8", label))
-			case "float64":
-				floatBits := math.Float64bits(toFloat(pv.Valor))
-				tempLabel := v.Generator.GenerateUniqueLabel("float_temp")
-				v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", tempLabel, floatBits))
-				v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", tempLabel))
-				v.Generator.AddInstruction("ldr d0, [x0]")
-				v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
-				v.Generator.AddInstruction("str d0, [x1]")
-
-			case "string":
-				v.Generator.AddData(fmt.Sprintf("%s: .asciz \"%s\"", label, pv.Valor))
-				v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - %s", label, label))
-
-			case "rune":
-				v.Generator.AddData(fmt.Sprintf("%s: .byte %d", label, toRune(pv.Valor)))
-				v.Generator.AddData(fmt.Sprintf("len_%s: .quad 1", label))
-			}
-		}
-	}
-
-	return nil
+    val := v.Visit(expr)
+    if pv, ok := val.(PrintValue); ok {
+        tipo := normalizeTipo(pv.Tipo)
+        label := id
+        v.VarMap[id] = VariableEntry{Tipo: tipo, Valor: pv.Valor, Label: label}
+        switch tipo {
+        case "int":
+            val := toInt(pv.Valor)
+            v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad %d", label, val))
+            v.Generator.AddData(fmt.Sprintf("len_%s: .quad 8", label))
+        case "bool":
+            val := 0
+            if pv.Valor == "true" {
+                val = 1
+            }
+            v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad %d", label, val))
+            v.Generator.AddData(fmt.Sprintf("len_%s: .quad 8", label))
+        case "float64":
+            floatBits := math.Float64bits(toFloat(pv.Valor))
+            tempLabel := v.Generator.GenerateUniqueLabel("float_temp")
+            v.Generator.AddData(fmt.Sprintf(".align 3\n%s: .quad 0x%x", tempLabel, floatBits))
+            v.Generator.AddInstruction(fmt.Sprintf("ldr x0, =%s", tempLabel))
+            v.Generator.AddInstruction("ldr d0, [x0]")
+            v.Generator.AddInstruction(fmt.Sprintf("ldr x1, =%s", label))
+            v.Generator.AddInstruction("str d0, [x1]")
+        case "string":
+            v.Generator.AddData(fmt.Sprintf("%s: .asciz \"%s\"", label, pv.Valor))
+            v.Generator.AddData(fmt.Sprintf("len_%s: .quad . - %s", label, label))
+        case "rune":
+            v.Generator.AddData(fmt.Sprintf("%s: .byte %d", label, toRune(pv.Valor)))
+            v.Generator.AddData(fmt.Sprintf("len_%s: .quad 1", label))
+        }
+    }
+    return nil
 }
 
 func (v *ARMVisitor) VisitRelacionales(ctx *parser.RelacionalesContext) interface{} {
@@ -996,7 +1026,7 @@ func (v *ARMVisitor) VisitOPERADORESLOGICOS(ctx *parser.OPERADORESLOGICOSContext
 	}
 
 	// Si no son booleanos, retorna false
-	fmt.Println("[DEBUG] VisitOPERADORESLOGICOS: valores no son booleanos, retornando false.")
+	//fmt.Println("[DEBUG] VisitOPERADORESLOGICOS: valores no son booleanos, retornando false.")
 	return PrintValue{Tipo: "bool", Valor: "x2"}
 }
 func (v *ARMVisitor) VisitParentesisexpre(ctx *parser.ParentesisexpreContext) interface{} {
@@ -1047,8 +1077,8 @@ func (v *ARMVisitor) VisitUnario(ctx *parser.UnarioContext) interface{} {
 			return PrintValue{Tipo: "bool", Valor: "x2"}
 		}
 		// Si no es booleano, retorna false
-		fmt.Println("[DEBUG] VisitUnario valor:", val.Valor)
-		fmt.Print("[ERROR] VisitUnario: operación ! solo válida para booleanos, retornando false.\n")
+		//fmt.Println("[DEBUG] VisitUnario valor:", val.Valor)
+		//fmt.Print("[ERROR] VisitUnario: operación ! solo válida para booleanos, retornando false.\n")
 		return PrintValue{Tipo: "bool", Valor: "false"}
 
 	case "-":
@@ -1075,7 +1105,7 @@ func (v *ARMVisitor) VisitIf_context(ctx *parser.If_contextContext) interface{} 
 }
 
 func (v *ARMVisitor) VisitIfDcl(ctx *parser.IfDclContext) interface{} {
-	fmt.Println("Entrando a VisitIfDcl con condición:", ctx.Expresion().GetText())
+	//fmt.Println("Entrando a VisitIfDcl con condición:", ctx.Expresion().GetText())
 	endLabel := v.Generator.GenerateUniqueLabel("ifend")
 	elseIfLabels := []string{}
 
@@ -1100,6 +1130,9 @@ func (v *ARMVisitor) VisitIfDcl(ctx *parser.IfDclContext) interface{} {
 		res := v.Visit(decl)
 		if str, ok := res.(string); ok && (str == "break" || str == "continue") {
 			return str
+		}
+		if ret, ok := res.(PrintValue); ok && ret.Tipo == "__return__" {
+			return ret
 		}
 	}
 	v.Generator.B(endLabel)
@@ -1289,16 +1322,26 @@ func (v *ARMVisitor) VisitExpresionStatement(ctx *parser.ExpresionStatementConte
 }
 
 func (v *ARMVisitor) VisitFor_context(ctx *parser.For_contextContext) interface{} {
-	fmt.Println("[DEBUG] Entrando a VisitFor_context")
+	//fmt.Println("[DEBUG] Entrando a VisitFor_context")
 	return v.Visit(ctx.ForDcl())
 }
 
 func (v *ARMVisitor) VisitStmt(ctx *parser.StmtContext) interface{} {
-	return v.VisitChildren(ctx)
+    //fmt.Println("[DEBUG] VisitStmt:", ctx.GetText())
+    for i := 0; i < ctx.GetChildCount(); i++ {
+        child := ctx.GetChild(i)
+        if node, ok := child.(antlr.ParseTree); ok {
+            res := v.Visit(node)
+            if ret, ok := res.(PrintValue); ok && ret.Tipo == "__return__" {
+                return ret
+            }
+        }
+    }
+    return nil
 }
 
 func (v *ARMVisitor) VisitForClasico(ctx *parser.ForClasicoContext) interface{} {
-	fmt.Println("[DEBUG] ➤ Entrando a ForClásico")
+	//fmt.Println("[DEBUG] ➤ Entrando a ForClásico")
 
 	asignacion := ctx.Asignacion()
 	condicion := ctx.Expresion()
@@ -1373,7 +1416,7 @@ func (v *ARMVisitor) VisitForClasico(ctx *parser.ForClasicoContext) interface{} 
 
 // Implementación para FOR tipo while: for condicion { cuerpo }
 func (v *ARMVisitor) VisitForCondicionUnica(ctx *parser.ForCondicionUnicaContext) interface{} {
-	fmt.Println("[DEBUG] Entrando a ForCondicionUnica")
+	//fmt.Println("[DEBUG] Entrando a ForCondicionUnica")
 
 	startLabel := v.Generator.GenerateUniqueLabel("for_start")
 	condLabel := v.Generator.GenerateUniqueLabel("for_cond")
@@ -1426,7 +1469,7 @@ func (v *ARMVisitor) VisitForCondicionUnica(ctx *parser.ForCondicionUnicaContext
 	// Fin del ciclo
 	v.Generator.setLabel(endLabel)
 
-	fmt.Println("[DEBUG] Salida de ForCondicionUnica")
+	//fmt.Println("[DEBUG] Salida de ForCondicionUnica")
 	return nil
 }
 
@@ -1506,7 +1549,7 @@ func (v *ARMVisitor) VisitFuncDcl(ctx *parser.FuncDclContext) interface{} {
 	funcName := ctx.ID().GetText()
 	label := "fn_" + funcName
 	v.FuncLabels[funcName] = label
-
+    //fmt.Println("[DEBUG] VisitFuncDcl:", funcName)
 	// ① Definir la etiqueta de la función en el .s
 	v.Generator.setLabel(label)
 
@@ -1529,10 +1572,13 @@ func (v *ARMVisitor) VisitFuncDcl(ctx *parser.FuncDclContext) interface{} {
 
 	// ⑤ Recorrer el cuerpo y detectar returns para saltar al endLabel
 	for _, decl := range ctx.Block().AllDeclaraciones() {
+		//fmt.Println("[DEBUG] VisitFuncDcl visit decl:", decl.GetText())
 		res := v.Visit(decl)
 		if ret, ok := res.(PrintValue); ok && ret.Tipo == "__return__" {
-			v.Generator.B(endLabel)
-			break
+			//v.Generator.B(endLabel)
+			v.Generator.AddInstruction("ret")
+			//fmt.Println("[DEBUG] VisitFuncDcl detectó return en", funcName)
+			return ret
 		}
 	}
 
@@ -1544,6 +1590,7 @@ func (v *ARMVisitor) VisitFuncDcl(ctx *parser.FuncDclContext) interface{} {
 func (v *ARMVisitor) VisitLlamadaFuncionExpr(ctx *parser.LlamadaFuncionExprContext) interface{} {
 	return v.Visit(ctx.LlamadaFuncion())
 }
+
 
 func (v *ARMVisitor) VisitLlamadaFuncion(ctx *parser.LlamadaFuncionContext) interface{} {
 	// Solo soportamos ID LPAREN ... RPAREN por ahora
@@ -1559,11 +1606,11 @@ func (v *ARMVisitor) VisitLlamadaFuncion(ctx *parser.LlamadaFuncionContext) inte
 	return nil
 }
 func (v *ARMVisitor) VisitFuncCall(ctx *parser.FuncCallContext) interface{} {
-	fmt.Println("[DEBUG] VisitFuncCall:", ctx.GetText())
+	//fmt.Println("[DEBUG] VisitFuncCall:", ctx.GetText())
 	funcName := ctx.ID().GetText()
 	label, ok := v.FuncLabels[funcName]
 	if !ok {
-		fmt.Printf("Función '%s' no declarada\n", funcName)
+		//fmt.Printf("Función '%s' no declarada\n", funcName)
 		return nil
 	}
 
@@ -1580,7 +1627,7 @@ func (v *ARMVisitor) VisitFuncCall(ctx *parser.FuncCallContext) interface{} {
 	}
 
 	// Llama a la función
-	fmt.Println("[DEBUG] Llamando a la función:", funcName, "SU LABEL ES:", label)
+	//fmt.Println("[DEBUG] Llamando a la función:", funcName, "SU LABEL ES:", label)
 	v.Generator.AddBl(label)
 	v.Generator.DebugPrint("ret_"+funcName, "Saliendo de "+funcName+"\\n")
 	// El valor de retorno está en x0
@@ -1596,13 +1643,28 @@ func (v *ARMVisitor) CallFunctionByName(name string) {
 	v.Generator.AddBl(label)
 }
 func (v *ARMVisitor) VisitReturnStatement(ctx *parser.ReturnStatementContext) interface{} {
-	val := v.Visit(ctx.Expresion())
-	if pv, ok := val.(PrintValue); ok {
-		v.Generator.AddMov("x0", pv.Valor) // <-- Esto es lo importante
-		return PrintValue{Tipo: "__return__"}
-	}
-	return PrintValue{Tipo: "__return__"}
+    txt := ctx.GetText()
+    //fmt.Println("[DEBUG] VisitReturnStatement:", txt)
+    // Si el texto viene como "return42", sepáralo
+    if strings.HasPrefix(txt, "return") && len(txt) > 6 {
+           valor := txt[6:] // lo que sigue después de "return"
+           //fmt.Println("[DEBUG] Valor de retorno (parche):", valor)
+           v.Generator.AddMov("x0", valor)
+           return PrintValue{Tipo: "__return__"}
+    }
+    // Si el árbol está bien, usa el hijo expresión
+    if ctx.Expresion() != nil {
+        val := v.Visit(ctx.Expresion())
+        if pv, ok := val.(PrintValue); ok {
+            //fmt.Println("[DEBUG] Valor de retorno:", pv.Valor)
+            v.Generator.AddMov("x0", pv.Valor)
+            return PrintValue{Tipo: "__return__"}
+        }
+    }
+    //fmt.Println("[DEBUG] VisitReturnStatement: no se pudo obtener un valor válido, retornando __return__")
+    return PrintValue{Tipo: "__return__"}
 }
+
 func (g *ArmGenerator) DebugPrint(label string, msg string) {
 	dataLabel := "dbg_" + label
 	lenLabel := "len_" + dataLabel
