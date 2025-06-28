@@ -15,10 +15,15 @@
 1. [Introducción](#introducción)
 2. [Tecnologías Utilizadas](#tecnologías-utilizadas)
 3. [Resumen General del Proyecto](#resumen-general-del-proyecto)
-4. [Diseño e Implementación de la Gramática](#diseño-e-implementación-de-la-gramática)
-5. [Estructura y Funcionamiento del Visitor `ReplVisitor`](#estructura-y-funcionamiento-del-visitor-ReplVisitor)
-6. [Conclusiones](#conclusiones)
-
+4. [Arquitectura VLangCherry](#-arquitectura-vlangcherry)
+    - [Diagrama de Flujo de Procesamiento](#-diagrama-de-flujo-de-procesamiento)
+    - [Componentes de la Arquitectura](#-componentes-de-la-arquitectura)
+    - [Ventajas de la Arquitectura](#-ventajas-de-la-arquitectura)
+    - [Flujo de Datos Detallado](#-flujo-de-datos-detallado)
+5. [Diseño e Implementación de la Gramática](#diseño-e-implementación-de-la-gramática)
+6. [Estructura y Funcionamiento del Visitor `ReplVisitor`](#estructura-y-funcionamiento-del-visitor-replvisitor)
+7. [Backend de Generación ARM: visitorARM y ARMGenerator](#6-backend-de-generación-arm-visitorarm-y-armgenerator)
+8. [Conclusiones](#conclusiones)
 ---
 
 ## Introducción
@@ -47,7 +52,124 @@ El proyecto consiste en la creación de un lenguaje llamado VLangCherry y su res
 * Múltiples entornos y ámbito de variables
 
 ---
+# 🍒 Arquitectura VLangCherry
 
+## 📊 Diagrama de Flujo de Procesamiento
+
+A continuación se presenta un diagrama de alto nivel que ilustra el flujo de procesamiento en **VLangCherry**, desde el código fuente hasta la ejecución interpretada o la generación de código ARM64:
+
+---
+
+## 🧩 Componentes de la Arquitectura
+
+### 🔄 **Flujo Principal**
+
+| Etapa | Componente | Descripción |
+|-------|------------|-------------|
+| **1** | 📄 **Código Fuente** | Archivo `.vlc` con sintaxis VLangCherry |
+| **2** | 🔍 **ANTLR4** | Parser que genera tokens y estructura sintáctica |
+| **3** | 🌳 **AST** | Representación abstracta del código en forma de árbol |
+| **4** | 🎯 **Visitor Pattern** | Patrón de diseño para recorrer y procesar el AST |
+
+### 🚀 **Modos de Ejecución**
+
+#### ⚡ **Modo Intérprete (ReplVisitor)**
+- ✅ **Ejecución directa** del AST
+- 🏃‍♂️ **Respuesta inmediata** sin compilación
+- 🧪 **Ideal para prototipado** y testing rápido
+- 💡 **Debugging interactivo** línea por línea
+
+#### 🔧 **Modo Compilación (ARMVisitor)**
+- 🎯 **Traducción a ARM64** assembly
+- ⚙️ **Optimización** de rendimiento
+- 📦 **Generación de ejecutables** nativos
+- 🏗️ **Compatibilidad** con hardware ARM
+
+---
+
+## 🛠️ **Componentes Especializados**
+
+### 🎯 **ReplVisitor**
+```
+┌─────────────────────┐
+│    ReplVisitor      │
+├─────────────────────┤
+│ • Evaluación directa│
+│ • Manejo de estado  │
+│ • Variables runtime │
+│ • Funciones built-in│
+└─────────────────────┘
+```
+
+### 🔧 **ARMVisitor** 
+```
+┌─────────────────────┐
+│     ARMVisitor      │
+├─────────────────────┤
+│ • Mapeo AST→ARM64   │
+│ • Gestión registros │
+│ • Control de flujo  │
+│ • Llamadas sistema  │
+└─────────────────────┘
+```
+
+### ⚙️ **ArmGenerator**
+```
+┌─────────────────────┐
+│    ArmGenerator     │
+├─────────────────────┤
+│ • Instrucciones ARM │
+│ • Manejo de pila    │
+│ • Gestión memoria   │
+│ • Optimizaciones    │
+└─────────────────────┘
+```
+
+---
+
+## 🎯 **Ventajas de la Arquitectura**
+
+### 🔄 **Flexibilidad**
+- **Dual-mode**: Interpretación **Y** compilación desde el mismo AST
+- **Modularidad**: Componentes intercambiables y extensibles
+- **Escalabilidad**: Fácil adición de nuevos backends
+
+### ⚡ **Rendimiento**
+- **Modo intérprete**: Desarrollo rápido
+- **Modo compilado**: Ejecución optimizada
+- **ARM64 nativo**: Máximo rendimiento en hardware compatible
+
+### 🛠️ **Extensibilidad**
+- **Nuevos visitors**: Para diferentes arquitecturas
+- **Backends adicionales**: LLVM, x86, RISC-V, etc.
+- **Optimizaciones**: A nivel de AST o código generado
+
+---
+
+## 🔄 **Flujo de Datos Detallado**
+
+```
+📄 Código VLangCherry
+        ⬇️
+🔍 Tokenización (ANTLR4)
+        ⬇️
+🌳 Construcción AST
+        ⬇️
+    🎯 Decisión de Modo
+       /              \
+      /                \
+⚡ ReplVisitor      🔧 ARMVisitor
+     ⬇️                  ⬇️
+🚀 Ejecución         ⚙️ ArmGenerator
+   Inmediata            ⬇️
+                    📝 ARM64 Code
+                        ⬇️
+                    🔨 Ensamblado
+                        ⬇️
+                    💻 Ejecución
+```
+
+--- 
 ## Diseño e Implementación de la Gramática
 
 ### Introducción a la gramática ANTLR
@@ -1709,8 +1831,143 @@ func (v *ReplVisitor) VisitPrintFunction(ctx *parser.LlamadaFuncionContext) inte
 Estas funciones, combinadas con las vistas anteriormente, completan el recorrido del AST generado por ANTLR y ejecutan de manera estructurada todo el lenguaje VLangCherry. El diseño modular permite agregar nuevas construcciones fácilmente, manteniendo la coherencia del sistema y facilitando la depuración y extensión del lenguaje.
 
 ---
+## 6. Backend de Generación ARM: visitorARM y ARMGenerator
+
+### Introducción
+
+Además del intérprete, VLangCherry cuenta con un backend de **generación de código ARM64**, permitiendo traducir programas escritos en el lenguaje a instrucciones ensamblador ARM. Esto posibilita la ejecución nativa en arquitecturas ARM reales o emuladas, y demuestra la separación entre la lógica de interpretación y la de compilación.
+
+---
+
+### Arquitectura General
+
+El backend ARM está compuesto principalmente por dos módulos:
+
+- **visitorARM.go (`ARMVisitor`)**: Visitor que recorre el AST generado por ANTLR y traduce cada nodo a instrucciones ARM.
+- **ARMGenerator.go (`ArmGenerator`)**: Encapsula la lógica para emitir instrucciones ARM, gestionar etiquetas, variables, pila y la sección de datos.
+
+La interacción entre ambos módulos sigue el patrón:  
+**AST → ARMVisitor → ArmGenerator → Código ARM**
+
+---
+
+### Principales Responsabilidades
+
+#### ARMVisitor
+
+- Traduce cada construcción del AST (declaraciones, expresiones, control de flujo, funciones, etc.) a instrucciones ARM.
+- Maneja el mapeo de variables a registros, offsets o labels ARM.
+- Controla el flujo de ejecución mediante la generación de etiquetas y saltos (`B`, `BEQ`, `BNE`, etc.).
+- Propaga correctamente las sentencias de control (`return`, `break`, `continue`) usando saltos y etiquetas.
+- Gestiona el valor de retorno de funciones a través del registro `x0` y saltos al final de la función.
+
+#### ArmGenerator
+
+- Provee métodos para emitir instrucciones ARM (`MOV`, `ADD`, `CMP`, `B`, etc.).
+- Genera etiquetas únicas para saltos y bloques de código.
+- Maneja la pila y la memoria local (push/pop, offsets).
+- Define la sección de datos (strings, variables globales, etc.).
+- Implementa funciones auxiliares como `strcmp`, conversión de tipos y rutinas de impresión.
+
+---
+
+### Traducción de Sentencias y Expresiones
+
+- **Variables**: Se asignan a registros o a posiciones relativas en la pila.
+- **Expresiones aritméticas y lógicas**: Se traducen a instrucciones ARM nativas, respetando la precedencia y los tipos.
+- **Control de flujo**: Se generan etiquetas y saltos condicionales para `if`, `for`, `switch`, etc.
+- **Funciones**: Los parámetros y valores de retorno se manejan mediante los registros estándar (`x0`, `x1`, ...). El visitor asegura que el valor de retorno esté en `x0` y salta al final de la función.
+- **Return**: Coloca el valor en `x0` y genera un salto incondicional al label de fin de función.
+
+---
+
+### Ejemplo de Traducción
+
+Supongamos el siguiente código VLangCherry:
+
+```vch
+fn suma(a int, b int) int {
+  return a + b
+}
+```
+
+### Manejo de Control de Flujo y Return
+If/Else: Se generan etiquetas para las ramas y saltos condicionales según el resultado de la comparación.
+For: Se crean etiquetas para el inicio, condición, cuerpo, incremento y fin del ciclo.
+Switch: Se compara la expresión principal con cada caso y se salta al bloque correspondiente.
+Return: El visitor coloca el valor en x0 y salta al final de la función usando un label único. Se utiliza una pila de labels de retorno para soportar funciones anidadas o recursivas.
+
+## Ventajas y Limitaciones
+### Ventajas:
+
+Separación de lógica: El visitor ARM se encarga de la traducción, mientras que el generador abstrae la emisión de instrucciones.
+Extensible: Es sencillo agregar nuevas construcciones del lenguaje o instrucciones ARM.
+Portabilidad: El código generado puede ejecutarse en hardware ARM real o emuladores.
+
+### Limitaciones:
+
+Actualmente solo se soporta ARM64.
+No se implementan optimizaciones avanzadas.
+El manejo de errores en tiempo de ejecución es limitado.
+
+## Ejemplo de Flujo de Traducción
+### Parsing: ANTLR genera el AST a partir del código fuente.
+### Visita: ARMVisitor recorre el AST y utiliza ArmGenerator para emitir instrucciones ARM.
+### Salida: El código ARM generado se puede ensamblar y ejecutar en una arquitectura ARM64.
+
 
 ## Conclusiones
 
-La implementación del intérprete VLangCherry utilizando ANTLR4 y Go ha demostrado ser un enfoque robusto y eficiente para el diseño de lenguajes. El patrón Visitor ha sido fundamental para desacoplar el recorrido del AST de las operaciones de ejecución, lo que facilita la adición de nuevas características y la modificación de las existentes. El sistema de manejo de ámbitos (`ScopeTrace`) ha sido crucial para la correcta gestión de variables y funciones, permitiendo la implementación de reglas de visibilidad y el manejo de recursión. La detección de errores semánticos, aunque no exhaustiva en este manual, es un componente vital para proporcionar retroalimentación útil al usuario. Este proyecto ha consolidado los principios de diseño de compiladores e intérpretes, sentando las bases para desarrollos futuros en el campo del procesamiento de lenguajes.
-```
+La implementación de VLangCherry representa un proyecto integral que abarca tanto la interpretación como la compilación a bajo nivel, integrando conceptos avanzados de diseño de lenguajes, estructuras de datos, teoría de compiladores y arquitectura de computadoras. A lo largo del desarrollo, se han consolidado aprendizajes clave y se han superado retos técnicos que enriquecen la experiencia y el valor académico del sistema.
+
+### Consolidación de la Arquitectura
+
+El uso de ANTLR4 para la generación del parser y el patrón Visitor para el recorrido del AST han permitido desacoplar la lógica de análisis sintáctico de la semántica y la ejecución. Esto facilita la extensión del lenguaje, la incorporación de nuevas construcciones y la experimentación con diferentes paradigmas de ejecución. El sistema de manejo de ámbitos (`ScopeTrace`) ha sido esencial para la correcta gestión de variables, funciones y estructuras, permitiendo la implementación de reglas de visibilidad, recursión y encapsulamiento.
+
+### Impacto del Backend ARM
+
+Uno de los aportes más significativos de VLangCherry es la integración de un backend de generación de código ARM64. Este componente transforma el lenguaje de un simple intérprete académico a una herramienta capaz de producir código ensamblador ejecutable en arquitecturas ARM reales o emuladas, como Raspberry Pi, servidores ARM o entornos virtualizados. La generación de código ARM implica desafíos adicionales, como el manejo explícito de registros, la gestión de la pila, la asignación eficiente de variables y la traducción de estructuras de control de alto nivel (if, for, switch) a instrucciones de bajo nivel.
+
+El visitor `ARMVisitor` y el generador `ArmGenerator` trabajan en conjunto para recorrer el AST y emitir instrucciones ARM optimizadas. El visitor se encarga de traducir cada construcción del lenguaje fuente a una secuencia de instrucciones, mientras que el generador abstrae la complejidad de la sintaxis ARM, permitiendo la reutilización de rutinas como la comparación de cadenas (`strcmp`), la conversión de tipos y la impresión de valores. Esta separación de responsabilidades facilita la depuración, el mantenimiento y la futura extensión del sistema.
+
+### Desafíos Técnicos y Soluciones
+
+Durante el desarrollo del backend ARM, se enfrentaron varios retos técnicos:
+
+- **Manejo de Control de Flujo:** Traducir sentencias como `if`, `for`, `switch`, `break`, `continue` y `return` a saltos y etiquetas ARM requiere una comprensión profunda del flujo de ejecución a bajo nivel. Se implementó una pila de labels de retorno para soportar funciones anidadas y recursivas, asegurando que cada `return` salte correctamente al final de la función.
+- **Gestión de la Pila y Registros:** La asignación de variables a registros o posiciones en la pila fue fundamental para evitar colisiones y garantizar la integridad de los datos durante la ejecución. Se diseñaron métodos específicos para el manejo de push/pop y offsets en la pila, así como para la gestión de variables locales y globales.
+- **Traducción de Tipos y Operaciones:** Se implementaron rutinas para la conversión y comparación de tipos, permitiendo que operaciones aritméticas, lógicas y de comparación funcionen correctamente en ARM, respetando la semántica del lenguaje fuente.
+- **Sección de Datos:** El generador ARM administra una sección de datos donde se almacenan cadenas, variables globales y otros literales, facilitando el acceso eficiente durante la ejecución.
+
+### Ventajas de la Arquitectura Modular
+
+El diseño modular de VLangCherry, con componentes claramente diferenciados para la interpretación (`ReplVisitor`) y la compilación (`ARMVisitor` y `ArmGenerator`), ofrece múltiples ventajas:
+
+- **Extensibilidad:** Es sencillo agregar nuevas construcciones del lenguaje o instrucciones ARM, así como adaptar el backend para otras arquitecturas en el futuro (por ejemplo, x86 o RISC-V).
+- **Portabilidad:** El código ARM generado puede ejecutarse en una amplia variedad de dispositivos, desde sistemas embebidos hasta servidores de alto rendimiento.
+- **Separación de responsabilidades:** La lógica de interpretación y compilación está desacoplada, permitiendo evolucionar ambos componentes de manera independiente.
+- **Facilidad de depuración y pruebas:** La generación de código intermedio y la posibilidad de inspeccionar el ensamblador ARM facilitan la identificación de errores y la validación del comportamiento del lenguaje.
+
+### Aprendizajes y Aplicaciones Futuras
+
+El desarrollo de VLangCherry ha consolidado conocimientos clave en:
+
+- Diseño de gramáticas formales y generación de analizadores sintácticos con ANTLR4.
+- Implementación del patrón Visitor para el recorrido y evaluación de árboles de sintaxis abstracta.
+- Traducción de alto nivel a bajo nivel, enfrentando los retos de la arquitectura ARM64.
+- Manejo de ámbitos, tipos, errores semánticos y control de flujo en un lenguaje propio.
+- Optimización de recursos y eficiencia en la generación de código ensamblador.
+
+Como líneas de trabajo futuro se identifican:
+
+- **Optimización del código ARM generado:** Implementar técnicas como eliminación de código muerto, propagación de constantes y mejor asignación de registros.
+- **Soporte para más arquitecturas:** Adaptar el backend para generar código para x86, RISC-V u otras plataformas populares.
+- **Mejoras en el manejo de errores en tiempo de ejecución:** Incluir rutinas de verificación y manejo de excepciones en el código ensamblador.
+- **Generación de código intermedio:** Introducir una capa de representación intermedia (IR) para facilitar optimizaciones y análisis estático antes de la traducción final a ARM.
+- **Herramientas de depuración:** Desarrollar utilidades para visualizar el flujo de ejecución y el estado de la pila/registros durante la ejecución del código ARM.
+- **Integración con toolchains ARM:** Automatizar el ensamblado y la ejecución del código generado en dispositivos ARM reales o emulados.
+
+### Reflexión Final
+
+VLangCherry es mucho más que un intérprete académico: es una plataforma de experimentación y aprendizaje en el diseño de lenguajes, capaz de producir código eficiente y portable para arquitecturas modernas. La integración de un backend ARM64 demuestra la madurez del proyecto y su potencial para aplicaciones reales, tanto en el ámbito educativo como en el desarrollo de software de sistemas. Este trabajo sienta las bases para futuras investigaciones y desarrollos en compiladores, intérpretes y generación de código para arquitecturas heterogéneas, y constituye un aporte valioso para la formación de ingenieros en ciencias de la computación y sistemas.
+
